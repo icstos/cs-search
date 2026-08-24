@@ -1,4 +1,4 @@
-"""顶部搜索栏：搜索框（防抖触发）+ 刷新 + 热键设置入口。"""
+"""顶部搜索栏：搜索框（防抖）+ 刷新 + 热键设置入口。"""
 
 from __future__ import annotations
 
@@ -6,20 +6,17 @@ import asyncio
 
 import flet as ft
 
-from csearch import controller
+from csearch import logic
 from csearch.state import AppState
 
 
 @ft.component
 def SearchBar(state: AppState):
-    page = ft.context.page
-
-    async def _on_submit():
-        # 搜索框 Enter：打开选中项（无选中则第一行）
+    async def _submit() -> None:
         if state.results:
             if not state.selected:
-                state.selected = {0}
-            await controller.open_selected(page, state)
+                state.selected, state.anchor = {0}, 0
+            await logic.open_selected(state)
 
     return ft.Container(
         padding=ft.Padding(12, 8, 12, 8),
@@ -37,27 +34,24 @@ def SearchBar(state: AppState):
                     dense=True,
                     border=ft.InputBorder.NONE,
                     text_size=14,
-                    cursor_color="#1A73E8",
-                    ignore_up_down_keys=True,  # ↓ 键上浮到页面级键盘处理（跳转列表）
-                    autofocus=state.focus_target == "search",
-                    key=f"search-{state.focus_epoch}" if state.focus_target == "search" else "search",
-                    on_change=lambda e: controller.on_query_changed(state, page, e.control.value),
-                    on_submit=lambda e: asyncio.create_task(_on_submit()),
-                    on_focus=lambda e: setattr(state, "focus_target", "search"),
+                    ignore_up_down_keys=True,  # ↓ 上浮到页面级键盘处理（跳转列表）
+                    autofocus=state.focus == "search",
+                    key=f"search-{state.focus_epoch}" if state.focus == "search" else "search",
+                    on_change=lambda e: logic.on_query_changed(state, e.control.value),
+                    on_submit=lambda e: asyncio.create_task(_submit()),
+                    on_focus=lambda e: setattr(state, "focus", "search"),
                 ),
                 ft.IconButton(
                     ft.Icons.REFRESH,
                     icon_size=20,
                     tooltip="刷新 (F5)",
-                    on_click=lambda e: asyncio.create_task(
-                        controller.run_search(state, page, reset=False, keep_selection=True)
-                    ),
+                    on_click=lambda e: asyncio.create_task(logic.run_search(state, keep_selection=True)),
                 ),
                 ft.IconButton(
                     ft.Icons.SETTINGS,
                     icon_size=20,
                     tooltip="设置全局热键",
-                    on_click=lambda e: controller.open_hotkey_dialog(state),
+                    on_click=lambda e: logic.open_hotkey(state),
                 ),
             ],
         ),
