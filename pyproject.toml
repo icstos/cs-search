@@ -1,0 +1,24 @@
+[project]
+name = "cs-search"
+version = "0.1.0"
+description = "CSearch - 基于 Flet + everytools 的 Everything 风格极速文件搜索工具 (Windows)"
+readme = "README.md"
+requires-python = ">=3.11"          # 目标 3.12+，同时兼容 3.11（3.11 已通过全部测试）
+dependencies = [
+    "flet>=0.86.0,<0.87",           # 声明式 UI 框架（0.86.x 声明式 API 稳定）
+    "everytools>=0.2.2",            # Everything SDK 封装（DLL 装载/过滤器/错误码）
+    "requests>=2.31",               # everytools 缺失的运行时依赖，显式声明
+    "pyperclip>=1.8",               # 剪贴板
+    "pynput>=1.7",                  # 全局热键
+    "Send2Trash>=1.8",              # 回收站删除
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["csearch", "csearch.ui"]
