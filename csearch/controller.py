@@ -13,12 +13,7 @@ import flet as ft
 
 from csearch import file_ops
 from csearch.logger import get_logger
-from csearch.search_engine import (
-    ContentSearchUnsupportedError,
-    EngineUnavailableError,
-    ResultItem,
-    SearchTimeoutError,
-)
+from csearch.search_engine import EngineUnavailableError, ResultItem, SearchTimeoutError
 from csearch.state import DEBOUNCE_MS, MAX_LOADED, PAGE_SIZE, AppState, Services, services
 
 
@@ -121,7 +116,7 @@ async def run_search(
         state.searching = False
         state.results, state.total = [], 0
         snack(page, str(e))
-    except (SearchTimeoutError, ContentSearchUnsupportedError) as e:
+    except SearchTimeoutError as e:
         log.warning("run_search: %s", e)
         state.searching = False
         state.results, state.total = [], 0

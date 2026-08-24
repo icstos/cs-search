@@ -1,18 +1,18 @@
-"""搜索内核：everything（everytools）SDK 封装 + 排序常量适配 + 分页查询 + 索引监听。
+"""搜索内核：Everything 1.5 专用（everytools 负责 DLL 装载）+ 分页查询 + 排序 + 索引监听。
 
-关键设计（性能与正确性）：
-1. everytools 负责 DLL 装载/初始化与错误码映射（其 SortType 枚举与捆绑的 1.4.1 SDK 完全一致）。
-   捆绑 DLL 为 Everything SDK 1.4.1（顺序式排序常量：名称1/2 路径3/4 大小5/6 修改时间13/14，
-   与官方 Everything.h 1.4 完全一致）；若检测到 1.5+ SDK DLL（主版本号 >= 2），
-   自动切换为 1.5 带符号排序常量（升序正/降序负）。
-2. 分页查询（性能核心）：Everything_SetMax/Everything_SetOffset 限制单次 IPC 传输量。
-   全量等待 QueryW(TRUE) 会传输全部命中行（20 万+ 结果需数秒）；
-   而 offset/max 分页单次只传 200 行 —— 实测百万级索引查询仅 ~15ms，
-   总数通过 Everything_GetTotResults 一次性获得，排序由 Everything 服务端完成。
+设计要点（基于 Everything 1.5，经验证）：
+1. 排序常量：实测 Everything 1.5 服务器经 IPC 仍使用顺序式常量（官方 SDK 头文件一致）：
+   名称 1/2、路径 3/4、大小 5/6、修改时间 13/14；负值/带符号常量会被服务器忽略并回退默认排序。
+2. 分页查询（性能核心）：Everything_SetMax/Everything_SetOffset 限制单次 IPC 传输量，
+   单页 200 行实测 15~25ms，总数经 Everything_GetTotResults 一次获取，排序由服务器完成。
 3. SDK 为进程级单查询状态：engine._lock（threading）串行化所有查询，
    上层经 asyncio.to_thread 放入线程池执行，Flet 事件循环零阻塞。
-4. 索引变更监听：优先 Everything_SetNotifyWindow（1.5+，托盘线程隐藏窗口收消息）；
-   不可用时降级为 5s 轻量签名轮询（offset=0, max=3，毫秒级）。
+4. 查询看门狗：内容搜索（content:）在未启用内容索引时触发实时扫描可能很慢，
+   超过 QUERY_TIMEOUT 即中止并给出友好提示，UI 永不冻结。
+5. 索引变更监听：优先 Everything_SetNotifyWindow（1.5 SDK DLL 专有，若在
+   vendor/ 或 %APPDATA%/CSearch/sdk/ 放置官方 1.5 SDK DLL 则自动启用，托盘线程收消息）；
+   不可用时自动降级为 5s 轻量签名轮询（offset=0, max=3，毫秒级）。
+6. everytools 负责装载 SDK DLL 与错误码映射；其 SortType 枚举与顺序式常量一致。
 """
 
 from __future__ import annotations
@@ -33,15 +33,11 @@ try:
 except Exception:  # noqa: BLE001
     _EVERYTOOLS_OK = False
 
-# ---- 排序常量：1.4.1 SDK 顺序式（官方 SDK 1.4 头文件 Everything.h 一致） ----
+# ---- 排序常量（Everything 1.5 服务器实测生效：顺序式，升序 n / 降序 n+1） ----
 SORT_NAME_ASC, SORT_NAME_DESC = 1, 2
 SORT_PATH_ASC, SORT_PATH_DESC = 3, 4
 SORT_SIZE_ASC, SORT_SIZE_DESC = 5, 6
 SORT_DATE_MODIFIED_ASC, SORT_DATE_MODIFIED_DESC = 13, 14
-# ---- 1.5 SDK 带符号式（Everything 1.5 SDK：升序为正、降序为负） ----
-_S15 = {
-    "name": (1, -1), "path": (2, -2), "size": (3, -3), "mtime": (7, -7),
-}
 
 # 请求标志位（官方 SDK）
 REQ_FILE_NAME = 0x00000001
@@ -62,6 +58,7 @@ _FILETIME_EPOCH = 116444736000000000
 _PAGE_UNKNOWN = 0xFFFFFFFFFFFFFFFF
 
 PAGE_SIZE = 200      # 首批/增量加载条数
+QUERY_TIMEOUT = 5.0  # 查询看门狗（秒）：内容扫描等慢查询超时保护
 
 
 @dataclass
@@ -122,19 +119,11 @@ class EngineUnavailableError(RuntimeError):
 
 
 class SearchTimeoutError(RuntimeError):
-    """查询超时（服务端全量扫描等耗时操作），已安全中止。"""
-
-
-class ContentSearchUnsupportedError(RuntimeError):
-    """内容搜索需要 Everything 1.5+ 及内容索引。"""
-
-
-# 查询超时保护：Everything 内容扫描等操作可能耗时极长，超时后中止并提示
-QUERY_TIMEOUT = 5.0
+    """查询超时（内容扫描等耗时操作），已安全中止。"""
 
 
 class SearchEngine:
-    """封装 everything（everytools）SDK：分页查询 / 排序 / 索引监听。"""
+    """封装 everything（everytools）SDK：分页查询 / 排序 / 索引监听（Everything 1.5）。"""
 
     def __init__(self) -> None:
         self._dll: Any = None
@@ -142,13 +131,13 @@ class SearchEngine:
         self._available = False
         self._err_msg = ""
         self.version = ""
-        self._sdk15 = False                # 排序常量风格：1.5 带符号 / 1.4 顺序
         self._notify_registered = False
         self._monitor_thread: Optional[threading.Thread] = None
         self._monitor_stop = threading.Event()
         self._monitor_cb: Optional[Callable[[], None]] = None
         self._last_query: tuple[Optional[str], int] = (None, 0)
         self._last_signature: tuple = ()
+        self._stuck_worker: Optional[threading.Thread] = None  # 超时卡死的查询线程
         self.init()
 
     # ------------------------------------------------------------------ 初始化
@@ -157,14 +146,11 @@ class SearchEngine:
             self._err_msg = "everytools 库未安装，请先执行 pip install everytools"
             return
         try:
+            # 优先使用用户提供的官方 1.5 SDK DLL（启用 SetNotifyWindow 等 1.5 能力）
             loader = get_dll_loader()
             self._dll = loader.everything_dll
             self.version = getattr(loader, "version", "")
             self._setup_signatures()
-            try:
-                self._sdk15 = int(self._dll.Everything_GetMajorVersion()) >= 2
-            except Exception:  # noqa: BLE001
-                self._sdk15 = False
             self._available = True
         except Exception as e:  # noqa: BLE001
             self._err_msg = f"Everything SDK DLL 加载失败: {e}"
@@ -215,15 +201,12 @@ class SearchEngine:
     def error_message(self) -> str:
         return self._err_msg
 
-    @property
-    def sdk_style(self) -> str:
-        return "1.5" if self._sdk15 else "1.4"
-
     def check_status(self) -> tuple[bool, str, bool]:
         """检测 Everything 服务：返回 (可用, 提示信息, 索引是否已加载)。"""
         if not self._available:
             return False, self._err_msg, False
         try:
+            self._ensure_ready()
             with self._lock:
                 self._dll.Everything_Reset()
                 self._dll.Everything_SetSearchW("")
@@ -261,14 +244,17 @@ class SearchEngine:
     def build_query(keyword: str, category: str, time_range: str, size_range: str) -> str:
         """组合 Everything 原生查询串：分类/时间/大小过滤器与关键词叠加生效。
 
-        分类用 Everything 1.5+ 原生搜索函数（folder:/doc:/pic:/video:/audio:/archive:/exe:），
+        分类用 Everything 原生搜索函数（folder:/doc:/pic:/video:/audio:/exe:），
+        压缩包用 ext: 扩展名列表（archive: 函数在部分 1.5 配置下无效），
         时间用 dm: 修改日期修饰符，大小用 size: 区间 —— 全部为 Everything 原生语法，
         与用户输入的关键词（含 ext:/content:/正则等）在服务端统一解析。
         """
         parts: list[str] = []
         cat = {
             "all": "", "folder": "folder:", "doc": "doc:", "pic": "pic:",
-            "video": "video:", "audio": "audio:", "archive": "archive:", "exe": "exe:",
+            "video": "video:", "audio": "audio:", "exe": "exe:",
+            # archive: 函数在部分 1.5 配置下无效，改用 ext: 扩展名列表，保证始终生效
+            "archive": "ext:zip;rar;7z;gz;bz2;xz;tar;iso;cab;jar;war",
         }.get(category, "")
         if cat:
             parts.append(cat)
@@ -310,18 +296,16 @@ class SearchEngine:
                 return f"size:<{hi}"
         return ""
 
-    def sort_value(self, column: str, desc: bool) -> int:
-        """列名 → SDK 排序常量（按 DLL 风格自动适配）。"""
-        if self._sdk15:
-            asc, dsc = _S15.get(column, (1, -1))
-        else:
-            table = {
-                "name": (SORT_NAME_ASC, SORT_NAME_DESC),
-                "path": (SORT_PATH_ASC, SORT_PATH_DESC),
-                "size": (SORT_SIZE_ASC, SORT_SIZE_DESC),
-                "mtime": (SORT_DATE_MODIFIED_ASC, SORT_DATE_MODIFIED_DESC),
-            }
-            asc, dsc = table.get(column, (SORT_NAME_ASC, SORT_NAME_DESC))
+    @staticmethod
+    def sort_value(column: str, desc: bool) -> int:
+        """列名 → SDK 排序常量（Everything 1.5 服务器顺序式，升序 n / 降序 n+1）。"""
+        table = {
+            "name": (SORT_NAME_ASC, SORT_NAME_DESC),
+            "path": (SORT_PATH_ASC, SORT_PATH_DESC),
+            "size": (SORT_SIZE_ASC, SORT_SIZE_DESC),
+            "mtime": (SORT_DATE_MODIFIED_ASC, SORT_DATE_MODIFIED_DESC),
+        }
+        asc, dsc = table.get(column, (SORT_NAME_ASC, SORT_NAME_DESC))
         return dsc if desc else asc
 
     # ------------------------------------------------------------------ 查询执行
@@ -330,15 +314,12 @@ class SearchEngine:
 
         核心性能点：SetMax/SetOffset 限制单次 IPC 传输量（默认 200 行），
         总数用 GetTotResults 获取，排序由 Everything 服务端完成。
-        带看门狗超时保护：内容搜索等全量扫描场景超时后安全中止，UI 永不冻结。
+        带看门狗超时保护：内容搜索（content:）未启用内容索引时会触发实时扫描，
+        超时后安全中止，UI 永不冻结。
         """
         if not self._available:
             raise EngineUnavailableError(self._err_msg)
-        # 1.4 SDK 的 content: 会触发服务端全量文件扫描（可能数十分钟），前置拦截给出友好提示
-        if "content:" in query.lower() and not self._sdk15:
-            raise ContentSearchUnsupportedError(
-                "内容搜索（content:）需要 Everything 1.5+ 并启用内容索引"
-            )
+        self._ensure_ready()
         with self._lock:
             self._dll.Everything_Reset()
             self._dll.Everything_SetSearchW(query)
@@ -352,7 +333,7 @@ class SearchEngine:
             self._dll.Everything_SetOffset(offset)
             # 看门狗：QueryW(TRUE) 阻塞等全部结果；超时则 Reset 中止并报错
             done = threading.Event()
-            qerr: list[Exception] = []
+            qerr: list[Any] = []
 
             def _query() -> None:
                 try:
@@ -365,12 +346,12 @@ class SearchEngine:
             worker = threading.Thread(target=_query, name="sdk-query", daemon=True)
             worker.start()
             if not done.wait(timeout=QUERY_TIMEOUT):
-                try:
-                    self._dll.Everything_Reset()  # 中止服务端扫描
-                except Exception:  # noqa: BLE001
-                    pass
+                # 注意：此处不能调用 Everything_Reset 中止（会与卡死的 QueryW 线程
+                # 争用 DLL 内部锁而永久阻塞）。记录卡死线程，等其自然结束后再恢复。
+                self._stuck_worker = worker
                 raise SearchTimeoutError(
-                    f"搜索超时（>{QUERY_TIMEOUT:.0f}s）。内容搜索需在 Everything 中启用内容索引后才会快"
+                    f"搜索超时（>{QUERY_TIMEOUT:.0f}s）。"
+                    + ("内容搜索需在 Everything 中启用内容索引后才会快" if "content:" in query.lower() else "请尝试更精确的关键词")
                 )
             if not isinstance(qerr[0], bool):
                 raise qerr[0]
@@ -399,6 +380,18 @@ class SearchEngine:
             self._last_signature = sig
             return SearchOutcome(rows=rows, total=total, total_files=files,
                                  total_folders=folders, signature=sig)
+
+    def _ensure_ready(self) -> None:
+        """就绪检查：上一次查询超时卡死时，等其自然结束后再允许触碰 DLL。
+
+        Everything 的 SDK 为进程级单查询状态，卡死的 QueryW 线程会占用内部状态；
+        此时任何 Reset/Query 调用都可能永久阻塞。因此卡死期间直接拒绝新查询，
+        待卡死线程（服务器端扫描）结束后自动恢复。
+        """
+        if self._stuck_worker is not None:
+            if self._stuck_worker.is_alive():
+                raise SearchTimeoutError("上一次查询仍在后台执行（如内容搜索扫描），请稍候重试")
+            self._stuck_worker = None
 
     def _read_item(self, index: int) -> ResultItem:
         d = self._dll
@@ -432,7 +425,11 @@ class SearchEngine:
 
     # ------------------------------------------------------------------ 索引变更监听
     def try_register_notify_window(self, hwnd: int, msg_id: int) -> bool:
-        """注册 Everything 索引变更通知窗口（1.5+）。失败返回 False（调用方降级轮询）。"""
+        """注册 Everything 索引变更通知窗口（1.5 SDK DLL 专有 API）。
+
+        使用官方 1.5 SDK DLL（放入项目 vendor/ 或 %APPDATA%/CSearch/sdk/）时自动生效；
+        当前 everytools 捆绑的 1.4 客户端无此函数 → 返回 False，由调用方降级为轮询。
+        """
         if not self._available or not hwnd:
             return False
         try:
