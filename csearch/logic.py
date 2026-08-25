@@ -17,6 +17,7 @@ import flet as ft
 from csearch import history, ops, store
 from csearch.engine import EngineUnavailableError, SearchTimeoutError
 from csearch.state import AppState, services
+from csearch.tray_manager import TrayManager
 from csearch.types import DEBOUNCE_MS, MAX_LOADED, PAGE_SIZE, ResultItem, WindowGeometry
 
 
@@ -347,14 +348,20 @@ def open_hotkey(state: AppState) -> None:
     state.hotkey_text, state.dialog = store.load_config().hotkey, "hotkey"
 
 
+def _set_hotkey(combo: str) -> bool:
+    """设置全局热键（托盘未启动时不可用，返回 False 由调用方提示）。"""
+    tray = services.tray
+    return tray.set_hotkey(combo) if tray is not None else False
+
+
 def confirm_hotkey(state: AppState) -> None:
     combo = state.hotkey_text.strip().lower()
     if combo:
-        if not services.hotkey.set(combo):
+        if not _set_hotkey(combo):
             snack("热键注册失败，请更换组合（如 alt+space / ctrl+shift+f）")
             return
     else:
-        services.hotkey.set("")  # 空 = 禁用
+        _set_hotkey("")  # 空 = 禁用
     store.save_hotkey(combo)
     state.dialog = None
     snack(f"全局热键已更新：{combo or '（已禁用）'}")
@@ -505,7 +512,7 @@ def hide_to_tray(state: AppState) -> None:
         pass
     if not state.balloon_shown and services.tray is not None:
         state.balloon_shown = True
-        services.tray.balloon("CSearch", "已最小化到系统托盘，全局热键可再次唤起")
+        services.tray.notify("已最小化到系统托盘，全局热键可再次唤起", "CSearch")
 
 
 def toggle_window(state: AppState) -> None:
@@ -557,9 +564,10 @@ async def quit_app(state: AppState) -> None:
         return
     state.quitting = True
     _save_geometry()
-    services.hotkey.stop()
+    # 退出顺序：停止热键监听 → 销毁托盘实例（TrayManager.stop 内部按序执行）→ 关闭主程序
     if services.tray is not None:
-        services.tray.stop_tray()
+        services.tray.stop()
+        services.tray = None
     services.engine.stop_change_monitor()
     p = page()
     try:
@@ -615,11 +623,17 @@ async def init_app(state: AppState) -> None:
     state.engine_version = services.engine.version
     state.bookmarks = store.load_bookmarks()
     try:
-        services.tray = TrayManager(services.bridge, services.engine.try_register_notify_window)
-        services.tray.start_tray()
+        services.tray = TrayManager(
+            title="CSearch - 极速文件搜索",
+            hotkey=store.load_config().hotkey,
+            on_toggle=lambda: services.bridge.emit("toggle"),
+            on_show=lambda: services.bridge.emit("show"),
+            on_hide=lambda: services.bridge.emit("hide"),
+            on_quit=lambda: services.bridge.emit("quit"),
+        )
+        services.tray.start()
     except Exception:  # noqa: BLE001
         services.tray = None
-    services.hotkey.set(store.load_config().hotkey)
     if not services.engine.notify_registered:
         services.engine.start_change_monitor(lambda: services.bridge.emit("index_changed"))
     # 支持启动即搜索（环境变量 CSEARCH_QUERY；默认空 = 不搜索，展示书签面板）
@@ -639,6 +653,8 @@ async def bridge_loop(state: AppState) -> None:
                 toggle_window(state)
             case "show":
                 show_window(state)
+            case "hide":
+                hide_to_tray(state)
             case "quit":
                 await quit_app(state)
                 return

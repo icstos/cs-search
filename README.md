@@ -42,7 +42,8 @@ C:\Softwares\Python-V3.12.10.x64\python.exe main.py               # 或 python m
 4. 多维过滤：分类（全部/文件夹/文档/图片/视频/音频/压缩包/可执行文件）、修改时间范围、大小区间。
 5. 书签：保存"关键词+过滤器"组合，卡片式展示，一键应用，重命名/删除，JSON 持久化。
 6. 全局热键 + 系统托盘：默认 `Alt+Space`（可自定义），关闭窗口最小化托盘
-   （纯 ctypes Shell_NotifyIconW，零额外依赖）。
+   （pystray 托盘 + pynput 热键，守护子线程运行，跨平台；托盘左键单击切换窗口、
+   右键菜单 显示/隐藏/退出）。
 7. 键盘导航：`↓` 搜索框→列表，`↑/↓` 移动选中，`Enter` 打开，`Esc` 清空，
    `F5` 刷新，`Ctrl+D` 复制路径，`Ctrl+E` 定位，`Ctrl+A` 全选。
 8. 窗口状态记忆：自动保存/恢复尺寸位置。
@@ -56,7 +57,8 @@ csearch/
 ├── engine.py            Everything SDK 封装（分页查询 / 排序 / 看门狗 / 索引监听）
 ├── ops.py               文件操作（打开 / 定位 / 复制 / 删除 / 启动 Everything）
 ├── store.py             配置与书签 JSON 持久化（函数式）
-├── services.py          事件桥 + 全局热键（pynput）+ 系统托盘（ctypes）
+├── tray_manager.py      系统托盘（pystray）+ 全局热键（pynput）独立模块（守护子线程，线程安全）
+├── services.py          跨线程事件桥（后台线程 → asyncio 主循环）
 ├── logic.py             业务编排（搜索 / 动作 / 书签 / 设置 / 事件分发）
 ├── state.py             应用状态（@ft.observable 数据类）+ 服务单例
 └── ui/                  声明式组件：app / searchbar / bookmarks / results / statusbar / dialogs / icons
@@ -95,5 +97,6 @@ csearch/
 ## 已知限制
 
 - `content:` 需 Everything 启用内容索引（Tools > Options > Content），未启用时较慢并触发超时提示。
-- 索引变更通知默认 5s 轮询；放置官方 1.5 SDK DLL 到 `vendor/` 后自动升级为事件驱动。
+- 索引变更通知为 5s 轮询（托盘改用 pystray 后不再提供消息窗口，
+  `Everything_SetNotifyWindow` 事件驱动通知暂不可用，engine 中保留接口便于未来恢复）。
 - 永久删除不可恢复；回收站模式走 send2trash。

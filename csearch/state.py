@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 import flet as ft
 
 from csearch.engine import SearchEngine
-from csearch.services import EventBridge, HotkeyManager, TrayManager
+from csearch.services import EventBridge
+from csearch.tray_manager import TrayManager
 from csearch.types import Bookmark, ResultItem
 
 
@@ -79,7 +80,6 @@ class Services:
     def __init__(self) -> None:
         self.engine = SearchEngine()
         self.bridge = EventBridge()
-        self.hotkey = HotkeyManager(self.bridge)
         self.tray: TrayManager | None = None
         self.state: AppState | None = None
         self._debounce: object | None = None
