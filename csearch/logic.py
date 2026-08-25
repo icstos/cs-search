@@ -218,6 +218,14 @@ async def copy_paths(state: AppState) -> None:
     snack(f"复制失败：{error}" if error else f"已复制 {len(items)} 个完整路径")
 
 
+async def open_folder(state: AppState, index: int) -> None:
+    """双击路径列：在资源管理器中打开对应文件夹。"""
+    if 0 <= index < len(state.results):
+        error = await asyncio.to_thread(ops.open_folder, state.results[index].path)
+        if error:
+            snack(f"打开文件夹失败：{error}")
+
+
 async def copy_names(state: AppState) -> None:
     items = selected_items(state)
     if not items:

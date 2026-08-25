@@ -86,6 +86,15 @@ def delete_items(items: list[ResultItem], permanent: bool) -> list[str]:
     return errors
 
 
+def open_folder(path: str) -> str | None:
+    """用资源管理器打开文件夹。返回错误信息或 None。"""
+    try:
+        os.startfile(path)
+        return None
+    except Exception as e:  # noqa: BLE001
+        return str(e)
+
+
 def launch_everything() -> bool:
     """尝试启动 Everything；失败返回 False。"""
     candidates = [
