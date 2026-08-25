@@ -24,8 +24,8 @@ _MF_STRING, _MF_SEPARATOR = 0, 0x800
 _TPM_RIGHTBUTTON, _TPM_RETURNCMD, _TPM_NONOTIFY = 0x2, 0x100, 0x80
 _IMAGE_ICON, _LR_LOADFROMFILE = 1, 0x10
 _IDI_APPLICATION = 32512
-_TRAY_MSG = 0x8001          # WM_APP+1 托盘回调
-_NOTIFY_MSG = 0x8007        # WM_APP+7 Everything 索引变更通知
+_TRAY_MSG = 0x8001  # WM_APP+1 托盘回调
+_NOTIFY_MSG = 0x8007  # WM_APP+7 Everything 索引变更通知
 _CMD_SHOW, _CMD_QUIT = 1, 2
 
 _WNDPROC = ctypes.WINFUNCTYPE(
@@ -39,20 +39,36 @@ class _POINT(ctypes.Structure):
 
 class _WNDCLASSW(ctypes.Structure):
     _fields_ = [
-        ("style", wt.UINT), ("lpfnWndProc", _WNDPROC), ("cbClsExtra", ctypes.c_int),
-        ("cbWndExtra", ctypes.c_int), ("hInstance", wt.HINSTANCE), ("hIcon", wt.HICON),
-        ("hCursor", wt.HANDLE), ("hbrBackground", wt.HBRUSH), ("lpszMenuName", wt.LPCWSTR),
+        ("style", wt.UINT),
+        ("lpfnWndProc", _WNDPROC),
+        ("cbClsExtra", ctypes.c_int),
+        ("cbWndExtra", ctypes.c_int),
+        ("hInstance", wt.HINSTANCE),
+        ("hIcon", wt.HICON),
+        ("hCursor", wt.HANDLE),
+        ("hbrBackground", wt.HBRUSH),
+        ("lpszMenuName", wt.LPCWSTR),
         ("lpszClassName", wt.LPCWSTR),
     ]
 
 
 class _NOTIFYICONDATAW(ctypes.Structure):
     _fields_ = [
-        ("cbSize", wt.DWORD), ("hWnd", wt.HWND), ("uID", wt.UINT), ("uFlags", wt.UINT),
-        ("uCallbackMessage", wt.UINT), ("hIcon", wt.HICON), ("szTip", ctypes.c_wchar * 128),
-        ("dwState", wt.DWORD), ("dwStateMask", wt.DWORD), ("szInfo", ctypes.c_wchar * 256),
-        ("uTimeoutOrVersion", wt.UINT), ("szInfoTitle", ctypes.c_wchar * 64),
-        ("dwInfoFlags", wt.DWORD), ("guidItem", ctypes.c_byte * 16), ("hBalloonIcon", wt.HICON),
+        ("cbSize", wt.DWORD),
+        ("hWnd", wt.HWND),
+        ("uID", wt.UINT),
+        ("uFlags", wt.UINT),
+        ("uCallbackMessage", wt.UINT),
+        ("hIcon", wt.HICON),
+        ("szTip", ctypes.c_wchar * 128),
+        ("dwState", wt.DWORD),
+        ("dwStateMask", wt.DWORD),
+        ("szInfo", ctypes.c_wchar * 256),
+        ("uTimeoutOrVersion", wt.UINT),
+        ("szInfoTitle", ctypes.c_wchar * 64),
+        ("dwInfoFlags", wt.DWORD),
+        ("guidItem", ctypes.c_byte * 16),
+        ("hBalloonIcon", wt.HICON),
     ]
 
 
@@ -89,7 +105,15 @@ class HotkeyManager:
         out: list[str] = []
         for part in (p.strip().lower() for p in combo.split("+") if p.strip()):
             out.append(
-                mods.get(part, keys.get(part, f"<{part}>" if part.startswith("f") and part[1:].isdigit() else part))
+                mods.get(
+                    part,
+                    keys.get(
+                        part,
+                        f"<{part}>"
+                        if part.startswith("f") and part[1:].isdigit()
+                        else part,
+                    ),
+                )
             )
         return "+".join(out)
 
@@ -133,7 +157,12 @@ class TrayManager(threading.Thread):
         self._stop = False
         self._user32 = ctypes.windll.user32
         self._shell32 = ctypes.windll.shell32
-        self._user32.DefWindowProcW.argtypes = [wt.HWND, wt.UINT, ctypes.c_size_t, ctypes.c_longlong]
+        self._user32.DefWindowProcW.argtypes = [
+            wt.HWND,
+            wt.UINT,
+            ctypes.c_size_t,
+            ctypes.c_longlong,
+        ]
         self._user32.DefWindowProcW.restype = ctypes.c_longlong
 
     # ------------------------------------------------------------ 生命周期
@@ -190,15 +219,34 @@ class TrayManager(threading.Thread):
         if not self._user32.RegisterClassW(ctypes.byref(wc)):
             return None
         hwnd = self._user32.CreateWindowExW(
-            0, "CSearchTrayWindow", None, 0, 0, 0, 0, 0, _HWND_MESSAGE, None, hinst, None
+            0,
+            "CSearchTrayWindow",
+            None,
+            0,
+            0,
+            0,
+            0,
+            0,
+            _HWND_MESSAGE,
+            None,
+            hinst,
+            None,
         )
         return int(hwnd or 0) or None
 
     def _add_icon(self) -> None:
         if not self._hwnd:
             return
-        ico = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
-        hicon = self._user32.LoadImageW(None, ico, _IMAGE_ICON, 32, 32, _LR_LOADFROMFILE) if os.path.isfile(ico) else None
+        ico = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "assets",
+            "icon_windows.ico",
+        )
+        hicon = (
+            self._user32.LoadImageW(None, ico, _IMAGE_ICON, 32, 32, _LR_LOADFROMFILE)
+            if os.path.isfile(ico)
+            else None
+        )
         if not hicon:
             hicon = self._user32.LoadIconW(None, _IDI_APPLICATION)
         nid = _NOTIFYICONDATAW()
@@ -247,8 +295,13 @@ class TrayManager(threading.Thread):
             self._user32.GetCursorPos(ctypes.byref(pt))
             self._user32.SetForegroundWindow(self._hwnd)
             cmd = self._user32.TrackPopupMenu(
-                menu, _TPM_RIGHTBUTTON | _TPM_RETURNCMD | _TPM_NONOTIFY,
-                pt.x, pt.y, 0, self._hwnd, None,
+                menu,
+                _TPM_RIGHTBUTTON | _TPM_RETURNCMD | _TPM_NONOTIFY,
+                pt.x,
+                pt.y,
+                0,
+                self._hwnd,
+                None,
             )
             if cmd:
                 self._user32.PostMessageW(self._hwnd, _WM_COMMAND, cmd, 0)

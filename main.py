@@ -18,10 +18,16 @@ from csearch.state import services
 from csearch.ui.app import App
 
 _ROOT = os.path.dirname(os.path.abspath(__file__))
-_ICON = os.path.join(_ROOT, "assets", "icon.ico")
+_ICON = os.path.join(_ROOT, "assets", "icon_windows.ico")
 # 本地字体：路径相对 assets/ 目录（page.fonts 要求），全局统一字族保证任何机器渲染一致
 _FONT_FAMILY = "AlibabaPuHuiTi"
 _FONT_FILE = "fonts/AlibabaPuHuiTi-3-55-Regular.otf"
+
+
+async def _on_keyboard(e: ft.KeyboardEvent) -> None:
+    """键盘事件：on_keyboard 是协程，必须用 async 处理器让 Flet await，
+    否则 lambda 包裹会返回未 await 的协程（RuntimeWarning + 快捷键失效）。"""
+    await logic.on_keyboard(services.state, e)
 
 
 async def main(page: ft.Page) -> None:
@@ -51,7 +57,7 @@ async def main(page: ft.Page) -> None:
     if cfg.start_hidden:
         page.window.visible = False
 
-    page.on_keyboard_event = lambda e: logic.on_keyboard(services.state, e)
+    page.on_keyboard_event = _on_keyboard
     page.window.on_event = lambda e: logic.on_window_event(services.state, e)
     page.render(App)
 
