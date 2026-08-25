@@ -534,12 +534,13 @@ def _save_geometry() -> None:
 def on_window_event(state: AppState | None, e: Any) -> None:
     if state is None:
         return
-    match str(getattr(e, "type", "")).lower():
-        case "close" if not state.quitting:
+    # e.type 是 WindowEventType 枚举：用 .value（如 "close"）比较，str(枚举) 是 "WindowEventType.CLOSE" 永远匹配不上
+    match getattr(e, "type", None):
+        case ft.WindowEventType.CLOSE if not state.quitting:
             hide_to_tray(state)
-        case "show":
+        case ft.WindowEventType.SHOW:
             focus_search(state)
-        case "resized" | "moved":
+        case ft.WindowEventType.RESIZED | ft.WindowEventType.MOVED:
             adapt_columns(state)
             if services._geo is not None:
                 services._geo.cancel()
