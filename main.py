@@ -17,7 +17,11 @@ from csearch import logic, store
 from csearch.state import services
 from csearch.ui.app import App
 
-_ICON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.ico")
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+_ICON = os.path.join(_ROOT, "assets", "icon.ico")
+# 本地字体：路径相对 assets/ 目录（page.fonts 要求），全局统一字族保证任何机器渲染一致
+_FONT_FAMILY = "AlibabaPuHuiTi"
+_FONT_FILE = "fonts/AlibabaPuHuiTi-3-55-Regular.otf"
 
 
 async def main(page: ft.Page) -> None:
@@ -28,6 +32,9 @@ async def main(page: ft.Page) -> None:
     page.bgcolor = "#F7F8FA"
     page.padding = 0
     page.spacing = 0
+    # 全局字体：注册本地字体 + 主题默认字族（Text/TextField/Dropdown/按钮统一生效）
+    page.fonts = {_FONT_FAMILY: _FONT_FILE}
+    page.theme = ft.Theme(font_family=_FONT_FAMILY)
     page.window.width, page.window.height = w.width, w.height
     if w.left is not None:
         page.window.left = w.left
@@ -50,4 +57,9 @@ async def main(page: ft.Page) -> None:
 
 
 if __name__ == "__main__":
-    ft.run(main, view=ft.AppView.FLET_APP)
+    # assets_dir 用绝对路径：避免相对路径解析随启动位置变化导致字体/资源加载失败
+    ft.run(
+        main,
+        view=ft.AppView.FLET_APP,
+        assets_dir=os.path.join(_ROOT, "assets"),
+    )

@@ -72,6 +72,8 @@ csearch/
   dataclass 等，无任何低版本兼容逻辑。
 - 分页查询：`SetMax/SetOffset` 限制单次 IPC 传输量，`GetTotResults` 一次取总数，
   实测 29 万结果首屏 15~80ms。
+- 本地字体：全局使用 `assets/fonts/AlibabaPuHuiTi-3-55-Regular.otf`（阿里普惠体），
+  任意机器渲染一致（`page.fonts` 注册 + `page.theme.font_family` 全局默认）。
 - 排序常量：顺序式（名称 1/2、路径 3/4、大小 5/6、修改时间 13/14），1.5 服务器实测。
 - 查询看门狗（5s）：`content:` 未启用内容索引时触发实时扫描，超时安全中止
   （不触碰 DLL 避免死锁，卡死线程自然结束后自动恢复）。
