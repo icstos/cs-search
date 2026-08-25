@@ -14,24 +14,38 @@ SORT_DATE_MODIFIED_ASC, SORT_DATE_MODIFIED_DESC = 13, 14
 # 每页加载条数 / 单会话最大加载量 / 输入防抖毫秒数
 PAGE_SIZE = 200
 MAX_LOADED = 5000
-DEBOUNCE_MS = 300
+DEBOUNCE_MS = 100
 
 # 查询看门狗（秒）：content: 未启用内容索引时触发实时扫描，超时保护
 QUERY_TIMEOUT = 5.0
 
 # 分类 / 时间 / 大小 过滤器选项（UI 与查询构建共用）
 CATEGORIES: list[tuple[str, str]] = [
-    ("all", "全部"), ("folder", "文件夹"), ("doc", "文档"), ("pic", "图片"),
-    ("video", "视频"), ("audio", "音频"), ("archive", "压缩包"), ("exe", "可执行文件"),
+    ("all", "全部"),
+    ("folder", "文件夹"),
+    ("doc", "文档"),
+    ("pic", "图片"),
+    ("video", "视频"),
+    ("audio", "音频"),
+    ("archive", "压缩包"),
+    ("exe", "可执行文件"),
 ]
 
 TIME_RANGES: list[tuple[str, str]] = [
-    ("any", "不限"), ("today", "今天"), ("week", "本周"), ("month", "本月"), ("year", "本年"),
+    ("any", "不限"),
+    ("today", "今天"),
+    ("week", "本周"),
+    ("month", "本月"),
+    ("year", "本年"),
 ]
 
 SIZE_RANGES: list[tuple[str, str]] = [
-    ("any", "不限"), ("lt1mb", "小于 1MB"), ("1mb-100mb", "1MB - 100MB"),
-    ("100mb-1gb", "100MB - 1GB"), ("gt1gb", "大于 1GB"), ("custom", "自定义…"),
+    ("any", "不限"),
+    ("lt1mb", "小于 1MB"),
+    ("1mb-100mb", "1MB - 100MB"),
+    ("100mb-1gb", "100MB - 1GB"),
+    ("gt1gb", "大于 1GB"),
+    ("custom", "自定义…"),
 ]
 
 
