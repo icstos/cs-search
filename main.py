@@ -9,6 +9,10 @@ import os
 
 import flet as ft
 
+# import logging
+
+# logging.basicConfig(level=logging.DEBUG)
+
 from csearch import logic, store
 from csearch.state import services
 from csearch.ui.app import App

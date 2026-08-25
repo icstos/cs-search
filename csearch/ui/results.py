@@ -1,4 +1,8 @@
-"""结果列表：可排序表头 + 交替行背景 + 类型图标 + 右键菜单 + 懒加载 + 键盘导航。"""
+"""结果列表：可排序表头（列宽可拖拽）+ 交替行背景 + 类型图标 + 右键菜单 + 懒加载 + 键盘导航。
+
+列宽对齐：表头与行统一从 state.col_widths 读取像素宽度，均从 x=0 起无内边距；
+对齐规则：名称/路径左对齐，大小右对齐，修改时间居中。
+"""
 
 from __future__ import annotations
 
@@ -13,17 +17,20 @@ from csearch.ui.bookmarks import BookmarksPanel
 from csearch.ui.icons import icon_for
 
 _BORDER, _HEADER_BG, _ROW_H = "#E4E7ED", "#F1F3F4", 30
-_COLUMNS = [("name", "名称", 2), ("path", "路径", 3), ("size", "大小", 1), ("mtime", "修改时间", 1)]
+# (列名, 标题, 对齐: -1 左 / 0 中 / 1 右)
+_COLUMNS = [("name", "名称", -1), ("path", "路径", -1), ("size", "大小", 1), ("mtime", "修改时间", 0)]
+_ALIGNMENT = {-1: ft.Alignment(-1, 0), 0: ft.Alignment(0, 0), 1: ft.Alignment(1, 0)}
+_TEXT_ALIGN = {-1: ft.TextAlign.LEFT, 0: ft.TextAlign.CENTER, 1: ft.TextAlign.RIGHT}
 
 
 @ft.component
 def Results(state: AppState):
     scroll_acc = ft.use_ref(0.0)
 
-    # 行控件缓存：仅结果集/选中集变化时重建（输入关键词重绘零重建）
+    # 行控件缓存：仅结果集/选中集/列宽变化时重建
     rows = ft.use_memo(
         lambda: [_row(state, i, item) for i, item in enumerate(state.results)],
-        [state.results, state.selected],
+        [state.results, state.selected, state.col_widths],
     )
 
     def _on_scroll(e) -> None:
@@ -39,9 +46,9 @@ def Results(state: AppState):
         asyncio.create_task(logic.on_list_key(state, getattr(e, "key", "") or ""))
 
     if not state.query.strip():
-        # 搜索框无内容：不显示搜索结果，结果区展示书签
-        body: ft.Control = BookmarksPanel(state)
-    elif not state.results and not state.searching:
+        # 搜索框无内容：连表头一并隐藏，仅展示书签面板
+        return BookmarksPanel(state)
+    if not state.results and not state.searching:
         body = ft.Container(
             expand=True,
             alignment=ft.Alignment(0, 0),
@@ -76,27 +83,28 @@ def Results(state: AppState):
 
 def _header(state: AppState) -> ft.Control:
     cells: list[ft.Control] = []
-    for key, label, flex in _COLUMNS:
+    for i, (key, label, align) in enumerate(_COLUMNS):
         active = state.sort_col == key
         arrow = ft.Icon(
             ft.Icons.ARROW_DOWNWARD if state.sort_desc else ft.Icons.ARROW_UPWARD,
             size=13, color="#1A73E8",
         ) if active else ft.Container(width=0, height=0)
-        row = ft.Row(
-            spacing=2,
-            alignment=ft.MainAxisAlignment.END if key == "size" else ft.MainAxisAlignment.START,
-            controls=[
-                ft.Text(label, size=12, weight=ft.FontWeight.W_600,
-                        color="#1A73E8" if active else "#5F6368"),
-                arrow,
-            ],
-        )
         cells.append(ft.Container(
-            expand=flex if key in ("name", "path") else None,
-            width=None if key in ("name", "path") else (86 if key == "size" else 130),
+            width=state.col_widths.get(key, 140),
+            alignment=_ALIGNMENT[align],
             on_click=lambda e, k=key: logic.on_sort(state, k),
-            content=row,
+            content=ft.Row(
+                spacing=2,
+                controls=[
+                    ft.Text(label, size=12, weight=ft.FontWeight.W_600,
+                            color="#1A73E8" if active else "#5F6368"),
+                    arrow,
+                ],
+            ),
         ))
+        if i < len(_COLUMNS) - 1:
+            cells.append(_separator(state, key))
+
     return ft.Container(
         bgcolor=_HEADER_BG,
         padding=ft.Padding(8, 6, 8, 6),
@@ -105,14 +113,52 @@ def _header(state: AppState) -> ft.Control:
     )
 
 
+def _separator(state: AppState, col: str) -> ft.Control:
+    """列宽拖拽分隔条：GestureDetector 水平拖拽事件驱动。"""
+    active = state.drag_col == col or state.hover_col == col
+    # 双通道：GestureDetector 原生拖拽事件（global_position 计算）+ 内层 Container
+    # on_tap_down 启动 ctypes 轮询兜底（flet 拖拽事件数据不可靠时的保险）
+    return ft.GestureDetector(
+        width=16,
+        height=30,
+        mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
+        on_horizontal_drag_start=lambda e: logic.start_col_drag_gesture(state, col, e),
+        on_horizontal_drag_update=lambda e: logic.update_col_drag_gesture(state, col, e),
+        on_horizontal_drag_end=lambda e: logic.end_col_drag_gesture(state),
+        on_horizontal_drag_cancel=lambda e: logic.end_col_drag_gesture(state),
+        tooltip="拖拽调整列宽",
+        content=ft.Container(
+            width=16,
+            height=30,
+            alignment=ft.Alignment(0, 0),
+            on_tap_down=lambda e: asyncio.create_task(logic.start_col_drag(state, col)),
+            on_hover=lambda e: _hover_col(state, col, e),
+            content=ft.Container(
+                width=3,
+                height=18,
+                border_radius=ft.BorderRadius(2, 2, 2, 2),
+                bgcolor="#9AA0A6" if active else "#DDE1E6",
+            ),
+        ),
+    )
+
+
+def _hover_col(state: AppState, col: str, e) -> None:
+    state.hover_col = col if getattr(e, "data", "") == "true" else None
+
+
 def _row(state: AppState, index: int, item: ResultItem) -> ft.Control:
     selected = index in state.selected
     bg = "#E8F0FE" if selected else ("#FFFFFF" if index % 2 == 0 else "#F6F8FA")
     icon, color = icon_for(item.name, item.is_folder)
+    widths = state.col_widths
 
-    def act(fn) -> ft.Control:
-        return lambda e: (logic.ensure_selected(state, index),
-                          asyncio.create_task(fn(state)))[1]
+    def act(fn):
+        def _h(e):
+            logic.ensure_selected(state, index)
+            asyncio.create_task(fn(state))
+
+        return _h
 
     menu = [
         ft.PopupMenuItem(content="打开", icon=ft.Icons.OPEN_IN_NEW, on_click=act(logic.open_selected)),
@@ -131,22 +177,33 @@ def _row(state: AppState, index: int, item: ResultItem) -> ft.Control:
         content=ft.Container(
             height=_ROW_H,
             bgcolor=bg,
-            padding=ft.Padding(8, 0, 8, 0),
             on_click=lambda e, i=index: logic.on_row_click(state, i),
             content=ft.Row(
-                spacing=8,
+                spacing=0,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Icon(icon, size=15, color=color),
-                    ft.Text(item.name, size=13, expand=True,
-                            weight=ft.FontWeight.W_500 if selected else None,
-                            color="#202124" if not selected else "#174EA6",
+                    ft.Row(
+                        width=widths.get("name", 260),
+                        spacing=6,
+                        controls=[
+                            ft.Icon(icon, size=15, color=color),
+                            ft.Text(item.name, size=13,
+                                    weight=ft.FontWeight.W_500 if selected else None,
+                                    color="#202124" if not selected else "#174EA6",
+                                    expand=True,
+                                    overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
+                        ],
+                    ),
+                    ft.Text(item.path, size=12, color="#5F6368",
+                            width=widths.get("path", 420),
+                            text_align=_TEXT_ALIGN[-1],
                             overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                    ft.Text(item.path, size=12, expand=True, color="#5F6368",
-                            overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                    ft.Text(item.size_str, size=12, color="#5F6368", width=86,
-                            text_align=ft.TextAlign.RIGHT),
-                    ft.Text(item.date_str, size=12, color="#5F6368", width=130),
+                    ft.Text(item.size_str, size=12, color="#5F6368",
+                            width=widths.get("size", 90),
+                            text_align=_TEXT_ALIGN[1]),
+                    ft.Text(item.date_str, size=12, color="#5F6368",
+                            width=widths.get("mtime", 140),
+                            text_align=_TEXT_ALIGN[0]),
                 ],
             ),
         ),

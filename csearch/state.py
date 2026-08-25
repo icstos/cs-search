@@ -44,6 +44,13 @@ class AppState:
     focus: str = "search"      # "search" | "list"
     focus_epoch: int = 0
 
+    # 结果列宽（表头与行共用，拖拽调整；单位逻辑像素）
+    col_widths: dict[str, int] = field(default_factory=lambda: {
+        "name": 260, "path": 420, "size": 90, "mtime": 140,
+    })
+    drag_col: str | None = None  # 正在拖拽调整的列
+    hover_col: str | None = None  # 鼠标悬停的分隔条列
+
     # 对话框（None = 关闭）
     dialog: str | None = None  # "delete" | "bookmark" | "hotkey" | "size"
     bm_edit_id: str | None = None
@@ -77,6 +84,8 @@ class Services:
         self._geo: object | None = None
         self._last_click_i = -1
         self._last_click_t = 0.0
+        self._drag_start = 0      # 列宽拖拽起始宽度
+        self._drag_origin: float | None = None  # 拖拽起始指针全局 x
 
 
 services = Services()

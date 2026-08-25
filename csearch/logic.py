@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
+import ctypes.wintypes as wt
 import time
 from typing import Any
 
@@ -326,6 +328,102 @@ def confirm_size(state: AppState) -> None:
     asyncio.create_task(run_search(state))
 
 
+# ==================================================================== 列宽拖拽
+_MIN_COL = {"name": 80, "path": 100, "size": 60, "mtime": 80}
+
+
+def start_col_drag_gesture(state: AppState, col: str, e: Any) -> None:
+    """GestureDetector 拖拽开始：记录起始宽度与指针全局位置。"""
+    if state.drag_col is not None:
+        return
+    state.drag_col = col
+    services._drag_start = state.col_widths.get(col, 100)
+    services._drag_origin = getattr(getattr(e, "global_position", None), "dx", None)
+
+
+def update_col_drag_gesture(state: AppState, col: str, e: Any) -> None:
+    """拖拽中：按 global_position 与起点的差值（逻辑像素）更新列宽。"""
+    if state.drag_col != col or services._drag_origin is None:
+        return
+    gx = getattr(getattr(e, "global_position", None), "dx", None)
+    if gx is None:
+        return
+    width = max(_MIN_COL.get(col, 60), min(int(services._drag_start + gx - services._drag_origin), 900))
+    if width != state.col_widths.get(col):
+        state.col_widths = {**state.col_widths, col: width}
+
+
+def end_col_drag_gesture(state: AppState) -> None:
+    state.drag_col = None
+
+
+def _cursor_x() -> int:
+    try:
+        pt = wt.POINT()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+        return int(pt.x)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _mouse_down() -> bool:
+    try:
+        return bool(ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _dpi_scale() -> float:
+    try:
+        hwnd = ctypes.windll.user32.FindWindowW(None, "CSearch - 极速文件搜索")
+        rect = wt.RECT()
+        ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        logical = float(page().window.width or 1040)
+        return (rect.right - rect.left) / logical if logical else 1.0
+    except Exception:  # noqa: BLE001
+        return 1.0
+
+
+async def start_col_drag(state: AppState, col: str) -> None:
+    """表头列宽拖拽：按下分隔条后轮询鼠标位置，松开左键结束。
+
+    flet 0.86.5 的 GestureDetector 水平拖拽事件数据不可靠（delta 常为 None，
+    导致宽度不更新），改用 GetCursorPos 轮询，与 UI 框架无关，稳定可用。
+    """
+    if state.drag_col is not None:
+        return
+    print(f"[drag] start col={col}", flush=True)
+    state.drag_col = col
+    start_x, start_w = _cursor_x(), state.col_widths.get(col, 100)
+    scale = _dpi_scale()
+    try:
+        while _mouse_down():
+            width = max(_MIN_COL.get(col, 60), min(int(start_w + (_cursor_x() - start_x) / scale), 900))
+            if width % 40 == 0:
+                print(f"[drag] width={width}", flush=True)
+            if width != state.col_widths.get(col):
+                state.col_widths = {**state.col_widths, col: width}
+            await asyncio.sleep(0.016)
+    finally:
+        state.drag_col = None
+
+
+def adapt_columns(state: AppState) -> None:
+    """窗口缩放时按比例适配弹性列（名称/路径），固定列（大小/时间）不变。"""
+    p = page()
+    try:
+        total = float(p.window.width or 1040)
+        fixed = state.col_widths.get("size", 90) + state.col_widths.get("mtime", 140) + 40
+        flexible = max(240.0, total - fixed)
+        ratio = flexible / (state.col_widths.get("name", 260) + state.col_widths.get("path", 420))
+        name = max(_MIN_COL["name"], int(state.col_widths.get("name", 260) * ratio))
+        path = max(_MIN_COL["path"], int(state.col_widths.get("path", 420) * ratio))
+        if (name, path) != (state.col_widths.get("name"), state.col_widths.get("path")):
+            state.col_widths = {**state.col_widths, "name": name, "path": path}
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # ==================================================================== 窗口 / 键盘 / 桥事件
 def show_window(state: AppState) -> None:
     p = page()
@@ -382,6 +480,7 @@ def on_window_event(state: AppState | None, e: Any) -> None:
         case "show":
             focus_search(state)
         case "resized" | "moved":
+            adapt_columns(state)
             if services._geo is not None:
                 services._geo.cancel()
 
@@ -447,6 +546,8 @@ async def on_list_key(state: AppState, key: str) -> None:
 
 
 async def init_app(state: AppState) -> None:
+    import os
+
     ok, msg, db = await asyncio.to_thread(services.engine.check_status)
     state.engine_ok, state.engine_msg, state.index_ready = ok, msg, db
     state.engine_version = services.engine.version
@@ -459,6 +560,10 @@ async def init_app(state: AppState) -> None:
     services.hotkey.set(store.load_config().hotkey)
     if not services.engine.notify_registered:
         services.engine.start_change_monitor(lambda: services.bridge.emit("index_changed"))
+    # 支持启动即搜索（环境变量 CSEARCH_QUERY；默认空 = 不搜索，展示书签面板）
+    init_query = os.environ.get("CSEARCH_QUERY", "").strip()
+    if init_query:
+        state.query = init_query
     await run_search(state)
 
 
