@@ -14,6 +14,35 @@ def dialogs(state: AppState) -> None:
     ft.use_dialog(_bookmark(state) if state.dialog == "bookmark" else None)
     ft.use_dialog(_hotkey(state) if state.dialog == "hotkey" else None)
     ft.use_dialog(_size(state) if state.dialog == "size" else None)
+    ft.use_dialog(_run_count(state) if state.dialog == "run_count" else None)
+
+
+def _run_count(state: AppState) -> ft.AlertDialog:
+    return ft.AlertDialog(
+        modal=True,
+        title=ft.Text("设置运行次数"),
+        content=ft.Column(
+            tight=True, spacing=8, width=320,
+            controls=[
+                ft.Text("为该文件设置打开/运行次数（用于次数列展示）。",
+                        size=12, color="#5F6368"),
+                ft.TextField(
+                    label="运行次数",
+                    value=state.run_count_text,
+                    dense=True,
+                    autofocus=True,
+                    keyboard_type=ft.KeyboardType.NUMBER,
+                    on_change=lambda e: setattr(state, "run_count_text", e.control.value),
+                    on_submit=lambda e: logic.confirm_run_count(state),
+                ),
+            ],
+        ),
+        actions=[
+            ft.FilledButton("确定", icon=ft.Icons.CHECK, on_click=lambda e: logic.confirm_run_count(state)),
+            ft.TextButton("取消", on_click=_close(state)),
+        ],
+        on_dismiss=_close(state),
+    )
 
 
 def _close(state: AppState):

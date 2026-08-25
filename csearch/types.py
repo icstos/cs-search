@@ -48,6 +48,7 @@ class ResultItem:
     ext: str
     size_str: str
     date_str: str
+    run_count: int = 0  # 本地运行历史次数（SQLite）
 
 
 @dataclass

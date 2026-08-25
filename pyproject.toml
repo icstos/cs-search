@@ -11,6 +11,7 @@ dependencies = [
     "pynput>=1.7",
     "pyperclip>=1.8",
     "Send2Trash>=1.8",
+    "sqlmodel>=0.0.22",
 ]
 
 [build-system]

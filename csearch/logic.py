@@ -14,7 +14,7 @@ from typing import Any
 
 import flet as ft
 
-from csearch import ops, store
+from csearch import history, ops, store
 from csearch.engine import EngineUnavailableError, SearchTimeoutError
 from csearch.state import AppState, services
 from csearch.types import DEBOUNCE_MS, MAX_LOADED, PAGE_SIZE, ResultItem, WindowGeometry
@@ -83,6 +83,11 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
         outcome = await asyncio.to_thread(services.engine.search, query, sort_val, 0, PAGE_SIZE)
         if state.seq != seq:
             return
+        counts = await asyncio.to_thread(
+            history.get_counts, (r.full_path for r in outcome.rows)
+        )
+        for r in outcome.rows:
+            r.run_count = counts.get(r.full_path, 0)
         prev = set(state.selected)
         state.results = outcome.rows
         state.total = outcome.total
@@ -132,6 +137,8 @@ async def _do_refresh(state: AppState) -> None:
 
 
 def on_sort(state: AppState, column: str) -> None:
+    if column == "run_count":
+        return  # 运行次数为本地数据，不参与 Everything 服务端排序
     if state.sort_col == column:
         state.sort_desc = not state.sort_desc
     else:
@@ -188,6 +195,41 @@ def move_selection(state: AppState, delta: int) -> None:
     state.selected, state.anchor = {nxt}, nxt
 
 
+def _refresh_run_counts(state: AppState, paths: list[str]) -> None:
+    """打开/设置次数后本地更新 results 中的显示值（避免整表重查）。"""
+    touched = set(paths)
+    changed = False
+    for r in state.results:
+        if r.full_path in touched:
+            r.run_count = history.get_counts([r.full_path]).get(r.full_path, r.run_count)
+            changed = True
+    if changed:
+        state.results = list(state.results)  # 整体替换触发重绘
+
+
+def request_run_count(state: AppState, index: int) -> None:
+    """右键设置运行次数：打开输入对话框。"""
+    if 0 <= index < len(state.results):
+        state.run_count_path = state.results[index].full_path
+        state.run_count_text = str(state.results[index].run_count)
+        state.dialog = "run_count"
+
+
+def confirm_run_count(state: AppState) -> None:
+    """确认设置运行次数。"""
+    try:
+        count = max(0, int(state.run_count_text.strip() or "0"))
+    except ValueError:
+        snack("请输入有效的非负整数")
+        return
+    if not state.run_count_path:
+        return
+    history.set_count(state.run_count_path, count)
+    _refresh_run_counts(state, [state.run_count_path])
+    state.dialog = None
+    snack(f"已设置运行次数：{count}")
+
+
 # ==================================================================== 文件动作
 async def open_selected(state: AppState) -> None:
     items = selected_items(state)
@@ -197,6 +239,11 @@ async def open_selected(state: AppState) -> None:
     errors = await asyncio.to_thread(ops.open_items, items)
     if errors:
         snack(f"打开失败：{errors[0]}")
+    else:
+        # 打开成功 → 运行次数 +1 并刷新当前列表显示
+        opened = [i.full_path for i in items]
+        await asyncio.to_thread(history.increment, opened)
+        _refresh_run_counts(state, opened)
 
 
 async def reveal_selected(state: AppState) -> None:
@@ -337,7 +384,7 @@ def confirm_size(state: AppState) -> None:
 
 
 # ==================================================================== 列宽拖拽
-_MIN_COL = {"name": 80, "path": 100, "size": 60, "mtime": 80}
+_MIN_COL = {"name": 80, "path": 100, "size": 60, "mtime": 80, "run_count": 50}
 
 
 def start_col_drag_gesture(state: AppState, col: str, e: Any) -> None:
@@ -400,19 +447,23 @@ async def start_col_drag(state: AppState, col: str) -> None:
     """
     if state.drag_col is not None:
         return
-    print(f"[drag] start col={col}", flush=True)
     state.drag_col = col
+    state.row_width_snap = dict(state.col_widths)  # 拖拽起点行快照
     start_x, start_w = _cursor_x(), state.col_widths.get(col, 100)
     scale = _dpi_scale()
+    frame = 0
     try:
         while _mouse_down():
             width = max(_MIN_COL.get(col, 60), min(int(start_w + (_cursor_x() - start_x) / scale), 900))
-            if width % 40 == 0:
-                print(f"[drag] width={width}", flush=True)
-            if width != state.col_widths.get(col):
+            if abs(width - state.col_widths.get(col, 100)) >= 1:  # 1px 灵敏度，避免抖动提交
                 state.col_widths = {**state.col_widths, col: width}
-            await asyncio.sleep(0.016)
+            frame += 1
+            if frame % 5 == 0:
+                # 节流：行控件每 60ms 重排一次（表头每帧跟手，行低频重排保证流畅）
+                state.row_width_snap = dict(state.col_widths)
+            await asyncio.sleep(0.012)
     finally:
+        state.row_width_snap = dict(state.col_widths)  # 松手后行对齐最终宽度
         state.drag_col = None
 
 
@@ -421,7 +472,8 @@ def adapt_columns(state: AppState) -> None:
     p = page()
     try:
         total = float(p.window.width or 1040)
-        fixed = state.col_widths.get("size", 90) + state.col_widths.get("mtime", 140) + 40
+        fixed = (state.col_widths.get("size", 90) + state.col_widths.get("mtime", 140)
+                 + state.col_widths.get("run_count", 70) + 40)
         flexible = max(240.0, total - fixed)
         ratio = flexible / (state.col_widths.get("name", 260) + state.col_widths.get("path", 420))
         name = max(_MIN_COL["name"], int(state.col_widths.get("name", 260) * ratio))
@@ -556,6 +608,7 @@ async def on_list_key(state: AppState, key: str) -> None:
 async def init_app(state: AppState) -> None:
     import os
 
+    await asyncio.to_thread(history.init_db)
     ok, msg, db = await asyncio.to_thread(services.engine.check_status)
     state.engine_ok, state.engine_msg, state.index_ready = ok, msg, db
     state.engine_version = services.engine.version

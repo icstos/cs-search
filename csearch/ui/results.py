@@ -18,7 +18,8 @@ from csearch.ui.icons import icon_for
 
 _BORDER, _HEADER_BG, _ROW_H = "#E4E7ED", "#F1F3F4", 30
 # (列名, 标题, 对齐: -1 左 / 0 中 / 1 右)
-_COLUMNS = [("name", "名称", -1), ("path", "路径", -1), ("size", "大小", 1), ("mtime", "修改时间", 0)]
+_COLUMNS = [("name", "名称", -1), ("path", "路径", -1), ("size", "大小", 1),
+           ("mtime", "修改时间", 0), ("run_count", "次数", 1)]
 _ALIGNMENT = {-1: ft.Alignment(-1, 0), 0: ft.Alignment(0, 0), 1: ft.Alignment(1, 0)}
 _TEXT_ALIGN = {-1: ft.TextAlign.LEFT, 0: ft.TextAlign.CENTER, 1: ft.TextAlign.RIGHT}
 
@@ -27,10 +28,10 @@ _TEXT_ALIGN = {-1: ft.TextAlign.LEFT, 0: ft.TextAlign.CENTER, 1: ft.TextAlign.RI
 def Results(state: AppState):
     scroll_acc = ft.use_ref(0.0)
 
-    # 行控件缓存：仅结果集/选中集/列宽变化时重建
+    # 行控件缓存：结果集/选中集/行宽快照变化时重建（拖拽中表头每帧跟手，行按快照节流重排）
     rows = ft.use_memo(
         lambda: [_row(state, i, item) for i, item in enumerate(state.results)],
-        [state.results, state.selected, state.col_widths],
+        [state.results, state.selected, state.row_width_snap],
     )
 
     def _on_scroll(e) -> None:
@@ -90,7 +91,7 @@ def _header(state: AppState) -> ft.Control:
             size=13, color="#1A73E8",
         ) if active else ft.Container(width=0, height=0)
         cells.append(ft.Container(
-            width=state.col_widths.get(key, 140),
+            width=state.col_widths.get(key, 90),
             alignment=_ALIGNMENT[align],
             on_click=lambda e, k=key: logic.on_sort(state, k),
             content=ft.Row(
@@ -165,6 +166,9 @@ def _row(state: AppState, index: int, item: ResultItem) -> ft.Control:
         ft.PopupMenuItem(content="打开文件所在位置", icon=ft.Icons.FOLDER_OPEN, on_click=act(logic.reveal_selected)),
         ft.PopupMenuItem(content="复制完整路径", icon=ft.Icons.CONTENT_COPY, on_click=act(logic.copy_paths)),
         ft.PopupMenuItem(content="复制文件名", icon=ft.Icons.CONTENT_PASTE, on_click=act(logic.copy_names)),
+        ft.PopupMenuItem(content="设置运行次数", icon=ft.Icons.TIMER,
+                          on_click=lambda e: (logic.ensure_selected(state, index),
+                                              logic.request_run_count(state, index))),
         ft.PopupMenuItem(),
         ft.PopupMenuItem(content="删除到回收站", icon=ft.Icons.DELETE_OUTLINE,
                           on_click=lambda e: logic.request_delete(state)),
@@ -179,21 +183,15 @@ def _row(state: AppState, index: int, item: ResultItem) -> ft.Control:
             bgcolor=bg,
             on_click=lambda e, i=index: logic.on_row_click(state, i),
             content=ft.Row(
-                spacing=0,
+                spacing=6,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Row(
-                        width=widths.get("name", 260),
-                        spacing=6,
-                        controls=[
-                            ft.Icon(icon, size=15, color=color),
-                            ft.Text(item.name, size=13,
-                                    weight=ft.FontWeight.W_500 if selected else None,
-                                    color="#202124" if not selected else "#174EA6",
-                                    expand=True,
-                                    overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                        ],
-                    ),
+                    ft.Icon(icon, size=15, color=color),
+                    ft.Text(item.name, size=13,
+                            weight=ft.FontWeight.W_500 if selected else None,
+                            color="#202124" if not selected else "#174EA6",
+                            width=widths.get("name", 260) - 21,  # 预留图标位
+                            overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
                     ft.GestureDetector(
                         width=widths.get("path", 420),
                         on_tap=lambda e, i=index: logic.on_row_click(state, i),
@@ -209,6 +207,10 @@ def _row(state: AppState, index: int, item: ResultItem) -> ft.Control:
                     ft.Text(item.date_str, size=12, color="#5F6368",
                             width=widths.get("mtime", 140),
                             text_align=_TEXT_ALIGN[0]),
+                    ft.Text(str(item.run_count) if item.run_count else "", size=12,
+                            color="#188038" if item.run_count else "#BDC1C6",
+                            width=widths.get("run_count", 70),
+                            text_align=_TEXT_ALIGN[1]),
                 ],
             ),
         ),

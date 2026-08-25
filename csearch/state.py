@@ -46,18 +46,21 @@ class AppState:
 
     # 结果列宽（表头与行共用，拖拽调整；单位逻辑像素）
     col_widths: dict[str, int] = field(default_factory=lambda: {
-        "name": 260, "path": 420, "size": 90, "mtime": 140,
+        "name": 260, "path": 400, "size": 90, "mtime": 140, "run_count": 70,
     })
     drag_col: str | None = None  # 正在拖拽调整的列
     hover_col: str | None = None  # 鼠标悬停的分隔条列
+    row_width_snap: dict[str, int] | None = None  # 行控件重建的节流快照（拖拽时 60ms 更新一次）
 
     # 对话框（None = 关闭）
-    dialog: str | None = None  # "delete" | "bookmark" | "hotkey" | "size"
+    dialog: str | None = None  # "delete" | "bookmark" | "hotkey" | "size" | "run_count"
     bm_edit_id: str | None = None
     bm_name: str = ""
     hotkey_text: str = ""
     size_min: str = ""
     size_max: str = ""
+    run_count_text: str = "0"  # 设置运行次数对话框输入
+    run_count_path: str = ""   # 设置运行次数的目标文件""
 
     # 书签
     bookmarks: list[Bookmark] = field(default_factory=list)
