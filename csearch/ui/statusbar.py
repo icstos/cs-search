@@ -10,6 +10,8 @@ from csearch.state import AppState
 @ft.component
 def StatusBar(state: AppState):
     left = (
+        ft.Text("输入关键词开始搜索", size=12, color="#9AA0A6")
+        if not state.query.strip() else
         ft.Text(f"搜索中… 已找到 {state.total:,} 项", size=12, color="#5F6368")
         if state.searching else
         ft.Text(

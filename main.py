@@ -29,7 +29,7 @@ async def main(page: ft.Page) -> None:
         page.window.left = w.left
     if w.top is not None:
         page.window.top = w.top
-    page.window.min_width, page.window.min_height = 760, 480
+    page.window.min_width, page.window.min_height = 900, 520
     page.window.maximized = w.maximized
     page.window.prevent_close = True  # 关闭 → 最小化到托盘
     if os.path.isfile(_ICON):

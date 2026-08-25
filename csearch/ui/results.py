@@ -9,6 +9,7 @@ import flet as ft
 from csearch import logic
 from csearch.state import AppState
 from csearch.types import ResultItem
+from csearch.ui.bookmarks import BookmarksPanel
 from csearch.ui.icons import icon_for
 
 _BORDER, _HEADER_BG, _ROW_H = "#E4E7ED", "#F1F3F4", 30
@@ -37,14 +38,15 @@ def Results(state: AppState):
     def _on_list_key(e) -> None:
         asyncio.create_task(logic.on_list_key(state, getattr(e, "key", "") or ""))
 
-    if not state.results and not state.searching:
-        body: ft.Control = ft.Container(
+    if not state.query.strip():
+        # 搜索框无内容：不显示搜索结果，结果区展示书签
+        body: ft.Control = BookmarksPanel(state)
+    elif not state.results and not state.searching:
+        body = ft.Container(
             expand=True,
             alignment=ft.Alignment(0, 0),
             content=ft.Text(
-                state.engine_msg if not state.engine_ok else (
-                    "没有匹配的结果" if state.query or state.category != "all" else "输入关键词开始搜索"
-                ),
+                state.engine_msg if not state.engine_ok else "没有匹配的结果",
                 size=13,
                 color="#9AA0A6",
             ),

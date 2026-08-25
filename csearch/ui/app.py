@@ -1,4 +1,4 @@
-"""根组件：布局装配 + 全局副作用（初始化 / 事件桥 / 对话框挂载）。"""
+"""根组件：单列布局（搜索行 → 结果/书签区 → 状态栏）+ 全局副作用。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from csearch.state import AppState, services
 from csearch.ui.dialogs import dialogs
 from csearch.ui.results import Results
 from csearch.ui.searchbar import SearchBar
-from csearch.ui.sidebar import Sidebar
 from csearch.ui.statusbar import StatusBar
 
 
@@ -35,20 +34,12 @@ def App():
     ft.use_effect(_setup, [], _cleanup)
     dialogs(state)
 
-    return ft.Row(
+    return ft.Column(
         expand=True,
         spacing=0,
         controls=[
-            Sidebar(state),
-            ft.Container(width=1, bgcolor="#E4E7ED"),
-            ft.Column(
-                expand=True,
-                spacing=0,
-                controls=[
-                    SearchBar(state),
-                    Results(state),
-                    StatusBar(state),
-                ],
-            ),
+            SearchBar(state),
+            Results(state),
+            StatusBar(state),
         ],
     )

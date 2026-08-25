@@ -46,6 +46,12 @@ def on_query_changed(state: AppState, value: str) -> None:
     state.query = value
     if services._debounce is not None:
         services._debounce.cancel()
+    if not value.strip():
+        # 搜索框无内容：不显示搜索结果（结果区展示书签）
+        state.searching, state.results, state.total = False, [], 0
+        state.selected = set()
+        state.last_query = ""
+        return
     services._debounce = asyncio.create_task(_debounced(state))
 
 
@@ -62,9 +68,13 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
             state.searching = False
             snack(msg)
             return
+    query = services.engine.build_query(state.query, state.category, state.time_range, state.size_range)
+    if not query.strip():
+        state.searching, state.results, state.total = False, [], 0
+        state.last_query = ""
+        return
     seq = state.seq + 1
     state.seq, state.searching = seq, True
-    query = services.engine.build_query(state.query, state.category, state.time_range, state.size_range)
     sort_val = services.engine.sort_value(state.sort_col, state.sort_desc)
     t0 = time.perf_counter()
     try:
@@ -140,7 +150,8 @@ def on_filter(state: AppState, field: str, value: str) -> None:
             state.size_range = value
         case _:
             return
-    asyncio.create_task(run_search(state))
+    if state.query.strip():
+        asyncio.create_task(run_search(state))
 
 
 # ==================================================================== 选中与列表
