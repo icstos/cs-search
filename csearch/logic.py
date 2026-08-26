@@ -782,6 +782,8 @@ async def init_app(state: AppState) -> None:
         services.tray = TrayManager(
             title="CSearch - 极速文件搜索",
             hotkey=store.load_config().hotkey,
+            # 热键：每次都激活窗口并置顶（不切换隐藏）；托盘左键单击仍为切换
+            on_hotkey=lambda: services.bridge.emit("show"),
             on_toggle=lambda: services.bridge.emit("toggle"),
             on_show=lambda: services.bridge.emit("show"),
             on_hide=lambda: services.bridge.emit("hide"),

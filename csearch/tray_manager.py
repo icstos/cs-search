@@ -103,7 +103,7 @@ class TrayManager:
     """系统托盘 + 全局热键管理器（守护子线程，线程安全）。
 
     对外仅暴露 start() / stop() / set_hotkey() / toggle_window() / notify()。
-    所有回调（on_toggle / on_show / on_hide / on_quit）运行在托盘或热键的守护线程中，
+    所有回调（on_hotkey / on_toggle / on_show / on_hide / on_quit）运行在托盘或热键的守护线程中，
     调用方必须把 GUI 操作通过线程安全事件桥抛回主线程执行。
     """
 
@@ -113,6 +113,7 @@ class TrayManager:
         icon_path: str | None = None,
         title: str = "CSearch",
         hotkey: str = "alt+space",
+        on_hotkey: _CB | None = None,
         on_toggle: _CB | None = None,
         on_show: _CB | None = None,
         on_hide: _CB | None = None,
@@ -122,6 +123,7 @@ class TrayManager:
         self._icon_path = icon_path if icon_path else _default_icon_path()
         self._title = title
         self._hotkey_combo = (hotkey or "").strip().lower()
+        self._on_hotkey = on_hotkey
         self._on_toggle = on_toggle
         self._on_show = on_show
         self._on_hide = on_hide
@@ -192,7 +194,7 @@ class TrayManager:
         return self._start_hotkey()
 
     def toggle_window(self) -> None:
-        """主动切换主窗口显示/隐藏（等价于左键单击托盘 / 按下全局热键）。"""
+        """主动切换主窗口显示/隐藏（等价于左键单击托盘）。"""
         self._fire(self._on_toggle)
 
     def notify(self, message: str, title: str | None = None) -> None:
@@ -244,7 +246,8 @@ class TrayManager:
             return not combo  # 空串 = 主动禁用，视为成功
         try:
             listener = keyboard.GlobalHotKeys(
-                {_to_pynput(combo): lambda: self._fire(self._on_toggle)}
+                # 热键固定触发 on_hotkey（激活窗口）；未注入时回退到 on_toggle 保持兼容
+                {_to_pynput(combo): lambda: self._fire(self._on_hotkey or self._on_toggle)}
             )
             listener.daemon = True
             listener.start()
