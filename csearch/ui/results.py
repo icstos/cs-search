@@ -11,7 +11,7 @@ import asyncio
 import flet as ft
 
 from csearch import logic
-from csearch.state import AppState
+from csearch.state import AppState, services
 from csearch.types import ResultItem
 from csearch.ui.bookmarks import BookmarksPanel
 from csearch.ui.icons import icon_for
@@ -27,6 +27,9 @@ _TEXT_ALIGN = {-1: ft.TextAlign.LEFT, 0: ft.TextAlign.CENTER, 1: ft.TextAlign.RI
 @ft.component
 def Results(state: AppState):
     scroll_acc = ft.use_ref(0.0)
+    lv_ref = ft.use_ref(ft.ListView)
+    # 滚轮桥/键盘翻页需要程序化滚动：把列表 Ref 注册到 services 供 logic 使用
+    services.results_list_ref = lv_ref
 
     # 行控件缓存：结果集/选中集/行宽快照变化时重建（拖拽中表头每帧跟手，行按快照节流重排）
     rows = ft.use_memo(
@@ -44,7 +47,9 @@ def Results(state: AppState):
                 asyncio.create_task(logic.load_more(state))
 
     def _on_list_key(e) -> None:
-        asyncio.create_task(logic.on_list_key(state, getattr(e, "key", "") or ""))
+        # 已废弃：列表按键统一由页面级 on_keyboard 处理（KeyboardListener 包裹
+        # 会导致 ListView 程序化滚动回弹，见上方注释）
+        pass
 
     if not state.query.strip():
         # 搜索框无内容：连表头一并隐藏，仅展示书签面板
@@ -60,19 +65,19 @@ def Results(state: AppState):
             ),
         )
     else:
-        body = ft.KeyboardListener(
+        # 注意：不能用 KeyboardListener 包裹 ListView —— flet 0.86 客户端中该包裹
+        # 会使 ListView 的程序化滚动（scroll_to）立即回弹到顶部，滚轮/键盘滚动全部失效。
+        # 列表按键统一走页面级 page.on_keyboard_event（见 logic.on_keyboard）。
+        body = ft.ListView(
+            ref=lv_ref,
+            controls=rows,
             expand=True,
-            key=f"kl-{state.focus_epoch}" if state.focus == "list" else "kl",
-            autofocus=state.focus == "list",
-            on_key_down=_on_list_key,
-            content=ft.ListView(
-                controls=rows,
-                expand=True,
-                spacing=0,
-                padding=ft.Padding(0, 4, 0, 4),
-                build_controls_on_demand=True,
-                on_scroll=_on_scroll,
-            ),
+            spacing=0,
+            padding=ft.Padding(0, 4, 0, 4),
+            build_controls_on_demand=True,
+            item_extent=_ROW_H,  # 行高固定：懒加载精确估算滚动范围
+            scroll=ft.Scrollbar(thumb_visibility=True, track_visibility=True, thickness=10),
+            on_scroll=_on_scroll,
         )
 
     return ft.Column(

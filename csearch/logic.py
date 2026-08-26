@@ -19,6 +19,7 @@ from csearch.engine import EngineUnavailableError, SearchTimeoutError
 from csearch.state import AppState, services
 from csearch.tray_manager import TrayManager
 from csearch.types import DEBOUNCE_MS, MAX_LOADED, PAGE_SIZE, ResultItem, WindowGeometry
+from csearch.wheel_bridge import WheelBridge
 
 
 def page() -> ft.Page:
@@ -194,6 +195,29 @@ def move_selection(state: AppState, delta: int) -> None:
     cur = max(state.selected) if state.selected else -1
     nxt = max(0, min(cur + delta, len(state.results) - 1))
     state.selected, state.anchor = {nxt}, nxt
+    # 让选中行保持可见（箭头导航时视图跟随滚动）
+    asyncio.create_task(scroll_results(state, None, row=nxt))
+
+
+async def scroll_results(state: AppState, delta: int | None = None, *, row: int | None = None) -> None:
+    """滚动结果列表：delta = 相对像素增量；row = 滚动到指定行（用于键盘导航）。
+
+    flet 0.86 桌面客户端部分环境不投递滚轮/拖拽事件到 Flutter，此处统一走
+    ListView.scroll_to() 程序化滚动（滚轮桥 / 键盘翻页均复用）。"""
+    if not state.results:
+        return
+    lv = services.results_list_ref
+    if lv is None or lv.current is None:
+        return
+    try:
+        if row is not None:
+            # 行高固定 30px：把选中行滚到视口中部附近
+            offset = max(0, row * 30 - 90)
+            await lv.current.scroll_to(offset=offset)
+        elif delta:
+            await lv.current.scroll_to(delta=delta)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _refresh_run_counts(state: AppState, paths: list[str]) -> None:
@@ -668,6 +692,9 @@ async def quit_app(state: AppState) -> None:
     state.quitting = True
     _save_geometry()
     # 退出顺序：停止热键监听 → 销毁托盘实例（TrayManager.stop 内部按序执行）→ 关闭主程序
+    if services.wheel is not None:
+        services.wheel.stop()
+        services.wheel = None
     if services.tray is not None:
         services.tray.stop()
         services.tray = None
@@ -704,6 +731,22 @@ async def on_keyboard(state: AppState | None, e: Any) -> None:
         case (False, "arrowdown") if state.focus == "search" and state.results:
             state.selected, state.anchor = {0}, 0
             focus_list(state)
+        # 列表焦点下的键盘导航（原 KeyboardListener 职责；该包裹会破坏 ListView
+        # 程序化滚动，已移除，统一走页面级键盘事件）
+        case (False, "arrowdown") if state.focus == "list":
+            move_selection(state, 1)
+        case (False, "arrowup") if state.focus == "list":
+            move_selection(state, -1)
+        case (False, "enter") if state.focus == "list":
+            await open_selected(state)
+        case (False, "pageup") if state.focus == "list":
+            await scroll_results(state, -500)
+        case (False, "pagedown") if state.focus == "list":
+            await scroll_results(state, 500)
+        case (False, "home") if state.focus == "list":
+            await scroll_results(state, None, row=0)
+        case (False, "end") if state.focus == "list":
+            await scroll_results(state, None, row=max(0, len(state.results) - 1))
 
 
 async def on_list_key(state: AppState, key: str) -> None:
@@ -712,6 +755,14 @@ async def on_list_key(state: AppState, key: str) -> None:
             move_selection(state, 1)
         case "arrowup":
             move_selection(state, -1)
+        case "pageup":
+            await scroll_results(state, -500)
+        case "pagedown":
+            await scroll_results(state, 500)
+        case "home":
+            await scroll_results(state, None, row=0)
+        case "end":
+            await scroll_results(state, None, row=max(0, len(state.results) - 1))
         case "enter":
             await open_selected(state)
         case "escape":
@@ -724,6 +775,10 @@ async def init_app(state: AppState) -> None:
     # 启动后延迟校验窗口位置：多显示器布局变化时保存的坐标可能已失效（窗口落在
     # 屏幕外 → 任务栏有程序但界面看不到），此时把窗口移回可见区域。
     asyncio.create_task(_ensure_window_on_screen_later())
+    # 滚轮桥：flet 客户端部分环境不投递 WM_MOUSEWHEEL 给 Flutter，用低级钩子兜底
+    services.wheel = WheelBridge(lambda delta: services.bridge.emit("wheel", delta=delta))
+    if not services.wheel.start():
+        services.wheel = None
     await asyncio.to_thread(history.init_db)
     ok, msg, db = await asyncio.to_thread(services.engine.check_status)
     state.engine_ok, state.engine_msg, state.index_ready = ok, msg, db
@@ -765,5 +820,7 @@ async def bridge_loop(state: AppState) -> None:
             case "quit":
                 await quit_app(state)
                 return
+            case "wheel":
+                await scroll_results(state, int(ev.get("delta", 0) or 0))
             case "index_changed":
                 await silent_refresh(state)

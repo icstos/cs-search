@@ -10,6 +10,7 @@ from csearch.engine import SearchEngine
 from csearch.services import EventBridge
 from csearch.tray_manager import TrayManager
 from csearch.types import Bookmark, ResultItem
+from csearch.wheel_bridge import WheelBridge
 
 
 @dataclass
@@ -81,6 +82,8 @@ class Services:
         self.engine = SearchEngine()
         self.bridge = EventBridge()
         self.tray: TrayManager | None = None
+        self.wheel: WheelBridge | None = None
+        self.results_list_ref = None  # 结果列表 Ref（滚动兜底用，由 Results 组件注册）
         self.state: AppState | None = None
         self._debounce: object | None = None
         self._refresh: object | None = None

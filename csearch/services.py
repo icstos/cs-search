@@ -13,7 +13,7 @@ import queue
 
 
 class EventBridge:
-    """线程安全事件桥：托盘/热键/索引线程 → asyncio 事件循环。
+    """线程安全事件桥：托盘/热键/滚轮/索引线程 → asyncio 事件循环。
 
     用法：
     - 后台线程调用 emit("toggle") 入队（非阻塞）；
@@ -22,15 +22,15 @@ class EventBridge:
     """
 
     def __init__(self) -> None:
-        self._q: queue.Queue[dict[str, str]] = queue.Queue()
+        self._q: queue.Queue[dict] = queue.Queue()
 
-    def emit(self, event: str) -> None:
+    def emit(self, event: str, **payload) -> None:
         try:
-            self._q.put_nowait({"type": event})
+            self._q.put_nowait({"type": event, **payload})
         except Exception:  # noqa: BLE001
             pass
 
-    async def next(self, timeout: float = 0.3) -> dict[str, str] | None:
+    async def next(self, timeout: float = 0.3) -> dict | None:
         try:
             return await asyncio.to_thread(self._q.get, True, timeout)
         except queue.Empty:
