@@ -675,7 +675,8 @@ async def quit_app(state: AppState) -> None:
     p = page()
     try:
         p.window.prevent_close = False
-        p.window.destroy()
+        # destroy 是协程：必须 await，否则窗口不关闭且产生 RuntimeWarning
+        await p.window.destroy()
     except Exception:  # noqa: BLE001
         import os
 
