@@ -492,14 +492,114 @@ def adapt_columns(state: AppState) -> None:
 
 
 # ==================================================================== 窗口 / 键盘 / 桥事件
-def show_window(state: AppState) -> None:
+class _MonitorInfo(ctypes.Structure):
+    """MONITORINFO（ctypes.wintypes 未内置，需自行定义）。"""
+
+    _fields_ = [
+        ("cbSize", wt.DWORD),
+        ("rcMonitor", wt.RECT),
+        ("rcWork", wt.RECT),
+        ("dwFlags", wt.DWORD),
+    ]
+
+
+def _work_areas() -> list[tuple[int, int, int, int]]:
+    """所有显示器工作区（物理像素）(left, top, right, bottom)；失败返回空列表。"""
+    areas: list[tuple[int, int, int, int]] = []
+    try:
+        user32 = ctypes.windll.user32
+
+        @ctypes.WINFUNCTYPE(
+            ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p,
+            ctypes.POINTER(wt.RECT), ctypes.c_void_p,
+        )
+        def _enum(hmon, hdc, lprect, lparam):
+            mi = _MonitorInfo()
+            mi.cbSize = ctypes.sizeof(_MonitorInfo)
+            if user32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
+                areas.append((mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom))
+            return True
+
+        user32.EnumDisplayMonitors(None, None, _enum, None)
+    except Exception:  # noqa: BLE001
+        return []
+    return areas
+
+
+def _ensure_window_on_screen() -> None:
+    """窗口位置防跑出屏幕：多显示器布局变化导致保存的坐标失效时，窗口主体可能
+    落在屏幕外（任务栏有程序、界面却看不到）。若窗口与所有显示器工作区的交集
+    小于窗口面积的 25%，将其移回交集最大的显示器并居中/贴边。"""
+    try:
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, "CSearch - 极速文件搜索")
+        if not hwnd:
+            return
+        rect = wt.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        width, height = rect.right - rect.left, rect.bottom - rect.top
+        if width <= 0 or height <= 0:
+            return
+        areas = _work_areas()
+        if not areas:
+            return
+        best: tuple[int, int, int, int, int] | None = None  # (面积, l, t, r, b)
+        for l, t, r, b in areas:
+            iw = max(0, min(rect.right, r) - max(rect.left, l))
+            ih = max(0, min(rect.bottom, b) - max(rect.top, t))
+            area = iw * ih
+            if best is None or area > best[0]:
+                best = (area, l, t, r, b)
+        if best is None or best[0] >= width * height * 0.25:
+            return  # 主体可见，无需纠正
+        _, wl, wtop, wr, wbottom = best
+        # 窗口比工作区大时贴边，否则居中；保证标题栏落在屏内
+        new_left = wl if width >= wr - wl else wl + (wr - wl - width) // 2
+        new_top = wtop if height >= wbottom - wtop else wtop + (wbottom - wtop - height) // 2
+        user32.SetWindowPos(
+            hwnd, None, new_left, new_top, 0, 0,
+            0x0001 | 0x0004 | 0x0010,  # SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _ensure_window_on_screen_later() -> None:
+    """启动延迟兜底：等客户端应用完保存的窗口几何后再校验屏幕内位置。"""
+    await asyncio.sleep(0.6)
+    _ensure_window_on_screen()
+
+
+def _force_foreground_windows(title: str) -> None:
+    """Windows 前台锁定规避：托盘/热键唤回时，SetForegroundWindow 可能被系统拒绝
+    （进程未收到输入事件），导致窗口显示但无键盘焦点、无法直接输入。
+    经典做法：先模拟一次 Alt 键按下/释放，再 SetForegroundWindow + SetFocus。"""
+    try:
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, title)
+        if not hwnd:
+            return
+        user32.keybd_event(0x12, 0, 0, 0)  # VK_MENU down
+        user32.keybd_event(0x12, 0, 2, 0)  # VK_MENU up
+        user32.SetForegroundWindow(hwnd)
+        user32.SetFocus(hwnd)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def show_window(state: AppState) -> None:
     p = page()
     try:
         p.window.visible, p.window.minimized = True, False
         p.update()
-        p.window.to_front()
+        # 唤醒时同步纠正屏幕外位置（多显示器布局变化后保存的坐标可能失效）
+        _ensure_window_on_screen()
+        # to_front 是协程：必须 await，否则窗口不会置顶且产生 RuntimeWarning
+        await p.window.to_front()
     except Exception:  # noqa: BLE001
         pass
+    # 托盘/热键唤回：强制获得 OS 键盘焦点（Windows 前台锁定兜底）
+    _force_foreground_windows(p.title)
     focus_search(state)
 
 
@@ -515,11 +615,11 @@ def hide_to_tray(state: AppState) -> None:
         services.tray.notify("已最小化到系统托盘，全局热键可再次唤起", "CSearch")
 
 
-def toggle_window(state: AppState) -> None:
+async def toggle_window(state: AppState) -> None:
     if page().window.visible:
         hide_to_tray(state)
     else:
-        show_window(state)
+        await show_window(state)
 
 
 def _save_geometry() -> None:
@@ -546,6 +646,9 @@ def on_window_event(state: AppState | None, e: Any) -> None:
         case ft.WindowEventType.CLOSE if not state.quitting:
             hide_to_tray(state)
         case ft.WindowEventType.SHOW:
+            focus_search(state)
+        case ft.WindowEventType.RESTORE:
+            # 最小化 → 恢复（任务栏/Alt+Tab 唤回）同样需要抢回搜索框焦点
             focus_search(state)
         case ft.WindowEventType.RESIZED | ft.WindowEventType.MOVED:
             adapt_columns(state)
@@ -617,6 +720,9 @@ async def on_list_key(state: AppState, key: str) -> None:
 async def init_app(state: AppState) -> None:
     import os
 
+    # 启动后延迟校验窗口位置：多显示器布局变化时保存的坐标可能已失效（窗口落在
+    # 屏幕外 → 任务栏有程序但界面看不到），此时把窗口移回可见区域。
+    asyncio.create_task(_ensure_window_on_screen_later())
     await asyncio.to_thread(history.init_db)
     ok, msg, db = await asyncio.to_thread(services.engine.check_status)
     state.engine_ok, state.engine_msg, state.index_ready = ok, msg, db
@@ -650,9 +756,9 @@ async def bridge_loop(state: AppState) -> None:
             continue
         match ev["type"]:
             case "toggle":
-                toggle_window(state)
+                await toggle_window(state)
             case "show":
-                show_window(state)
+                await show_window(state)
             case "hide":
                 hide_to_tray(state)
             case "quit":
