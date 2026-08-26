@@ -111,18 +111,21 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
 
 
 async def load_more(state: AppState) -> None:
-    if state.searching or not state.last_query:
+    if state.searching or not state.last_query or state.loading_more:
         return
     loaded = len(state.results)
     if loaded >= state.total or loaded >= MAX_LOADED:
         return
+    state.loading_more = True
     try:
         outcome = await asyncio.to_thread(
             services.engine.search, state.last_query, state.last_sort, loaded, PAGE_SIZE
         )
+        state.results = state.results + outcome.rows
     except Exception:  # noqa: BLE001
-        return
-    state.results = state.results + outcome.rows
+        pass
+    finally:
+        state.loading_more = False
 
 
 async def silent_refresh(state: AppState) -> None:
@@ -713,7 +716,9 @@ async def quit_app(state: AppState) -> None:
 async def on_keyboard(state: AppState | None, e: Any) -> None:
     if state is None:
         return
-    key, ctrl = str(getattr(e, "key", "") or "").lower(), bool(getattr(e, "ctrl", False))
+    # 规范化：flet 键名形如 "Arrow Down"/"Page Down"（带空格），统一去掉空格小写
+    key = str(getattr(e, "key", "") or "").lower().replace(" ", "")
+    ctrl = bool(getattr(e, "ctrl", False))
     match (ctrl, key):
         case (False, "f5"):
             await run_search(state, keep_selection=True)
@@ -747,26 +752,6 @@ async def on_keyboard(state: AppState | None, e: Any) -> None:
             await scroll_results(state, None, row=0)
         case (False, "end") if state.focus == "list":
             await scroll_results(state, None, row=max(0, len(state.results) - 1))
-
-
-async def on_list_key(state: AppState, key: str) -> None:
-    match str(key or "").lower():
-        case "arrowdown":
-            move_selection(state, 1)
-        case "arrowup":
-            move_selection(state, -1)
-        case "pageup":
-            await scroll_results(state, -500)
-        case "pagedown":
-            await scroll_results(state, 500)
-        case "home":
-            await scroll_results(state, None, row=0)
-        case "end":
-            await scroll_results(state, None, row=max(0, len(state.results) - 1))
-        case "enter":
-            await open_selected(state)
-        case "escape":
-            focus_search(state)
 
 
 async def init_app(state: AppState) -> None:

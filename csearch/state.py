@@ -71,6 +71,7 @@ class AppState:
     seq: int = 0              # 竞态防护：新查询序号
     last_query: str = ""      # 最近执行的查询串（增量加载复用）
     last_sort: int = 0
+    loading_more: bool = False  # 增量加载进行中（防并发重复追加）
     balloon_shown: bool = False
     quitting: bool = False
 

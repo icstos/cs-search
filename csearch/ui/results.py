@@ -26,7 +26,6 @@ _TEXT_ALIGN = {-1: ft.TextAlign.LEFT, 0: ft.TextAlign.CENTER, 1: ft.TextAlign.RI
 
 @ft.component
 def Results(state: AppState):
-    scroll_acc = ft.use_ref(0.0)
     lv_ref = ft.use_ref(ft.ListView)
     # 滚轮桥/键盘翻页需要程序化滚动：把列表 Ref 注册到 services 供 logic 使用
     services.results_list_ref = lv_ref
@@ -38,13 +37,14 @@ def Results(state: AppState):
     )
 
     def _on_scroll(e) -> None:
-        delta = getattr(e, "scroll_delta", None)
-        dy = float(getattr(delta, "y", 0) or 0)
-        if dy > 0:
-            scroll_acc.current += dy
-            if scroll_acc.current > 350:
-                scroll_acc.current = 0.0
-                asyncio.create_task(logic.load_more(state))
+        # 触底增量加载：滚轮桥 scroll_to 是跳转，scroll_delta 恒为 0，必须按
+        # 像素位置判断（距底部 <150px 时触发）；load_more 内部有并发/上限
+        # 防护，重复触发安全。
+        pixels = float(getattr(e, "pixels", 0) or 0)
+        max_ext = float(getattr(e, "max_scroll_extent", 0) or 0)
+        viewport = float(getattr(e, "viewport_dimension", 0) or 0)
+        if max_ext > 0 and pixels + viewport >= max_ext - 150:
+            asyncio.create_task(logic.load_more(state))
 
     def _on_list_key(e) -> None:
         # 已废弃：列表按键统一由页面级 on_keyboard 处理（KeyboardListener 包裹
