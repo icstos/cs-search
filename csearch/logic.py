@@ -192,6 +192,15 @@ def ensure_selected(state: AppState, index: int) -> None:
         state.selected, state.anchor = {index}, index
 
 
+def best_result_index(state: AppState) -> int:
+    """回车默认选中：运行次数最大的结果；全部未运行过则选第一个。"""
+    best, best_count = 0, 0
+    for i, r in enumerate(state.results):
+        if r.run_count > best_count:
+            best, best_count = i, r.run_count
+    return best
+
+
 def move_selection(state: AppState, delta: int) -> None:
     if not state.results:
         return

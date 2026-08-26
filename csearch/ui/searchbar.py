@@ -7,7 +7,7 @@ import asyncio
 import flet as ft
 
 from csearch import logic
-from csearch.state import AppState
+from csearch.state import AppState, services
 from csearch.types import CATEGORIES, SIZE_RANGES, TIME_RANGES
 
 
@@ -26,10 +26,25 @@ def _dropdown(state: AppState, field: str, value: str, options: list[tuple[str, 
 @ft.component
 def SearchBar(state: AppState):
     async def _submit() -> None:
-        if state.results:
-            if not state.selected:
-                state.selected, state.anchor = {0}, 0
-            await logic.open_selected(state)
+        # 回车两步走：第一次仅选中「运行次数最大」的结果（无运行记录则选第一个），
+        # 再次回车打开选中结果；若已有选中（鼠标点击等）则直接打开。
+        if not state.query.strip():
+            return
+        # 防抖未触发 / 搜索进行中时，先按当前条件落库查询，保证选中基于最新结果
+        current = services.engine.build_query(state.query, state.category, state.time_range, state.size_range)
+        if state.searching or not state.results or state.last_query != current:
+            await logic.run_search(state)
+        if not state.results:
+            return
+        if state.focus == "list":
+            return  # 列表焦点下回车由页面级键盘事件处理（避免重复打开）
+        if not state.selected:
+            best = logic.best_result_index(state)
+            state.selected, state.anchor = {best}, best
+            logic.focus_list(state)
+            asyncio.create_task(logic.scroll_results(state, None, row=best))
+            return
+        await logic.open_selected(state)
 
     return ft.Container(
         padding=ft.Padding(12, 8, 12, 8),
