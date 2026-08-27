@@ -89,6 +89,7 @@ class Services:
         self._debounce: object | None = None
         self._refresh: object | None = None
         self._geo: object | None = None
+        self._last_input_ts = 0.0  # 最近一次搜索框输入时间（静默刷新避让打字）
         self._last_click_i = -1
         self._last_click_t = 0.0
         self._drag_start = 0      # 列宽拖拽起始宽度

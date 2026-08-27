@@ -47,7 +47,13 @@ def focus_list(state: AppState) -> None:
 
 # ==================================================================== 搜索
 def on_query_changed(state: AppState, value: str) -> None:
+    if value == state.query:
+        return  # IME 组合等重复事件：跳过，避免无效搜索与多余重建
     state.query = value
+    services._last_input_ts = time.monotonic()
+    # 输入即作废所有在途搜索：过期结果静默丢弃、绝不落地 UI，
+    # 打字过程不会被下方结果更新打断（输入手感优先于结果实时性）
+    state.seq += 1
     if services._debounce is not None:
         services._debounce.cancel()
     if not value.strip():
@@ -60,8 +66,16 @@ def on_query_changed(state: AppState, value: str) -> None:
 
 
 async def _debounced(state: AppState) -> None:
-    await asyncio.sleep(DEBOUNCE_MS / 1000)
-    await run_search(state)
+    try:
+        await asyncio.sleep(DEBOUNCE_MS / 1000)
+    except asyncio.CancelledError:
+        return  # 防抖窗口内又有新输入：放弃本次
+    try:
+        # shield：进入搜索后即使任务被取消（新输入打断），也让搜索在后台跑完，
+        # 由 run_search 内部 seq 守卫决定是否落地，避免取消导致 searching 卡死
+        await asyncio.shield(run_search(state))
+    except asyncio.CancelledError:
+        pass
 
 
 async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
@@ -83,31 +97,39 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
     t0 = time.perf_counter()
     try:
         outcome = await asyncio.to_thread(services.engine.search, query, sort_val, 0, PAGE_SIZE)
-        if state.seq != seq:
-            return
-        counts = await asyncio.to_thread(
-            history.get_counts, (r.full_path for r in outcome.rows)
-        )
-        for r in outcome.rows:
-            r.run_count = counts.get(r.full_path, 0)
-        prev = set(state.selected)
-        state.results = outcome.rows
-        state.total = outcome.total
-        state.elapsed_ms = (time.perf_counter() - t0) * 1000
-        state.searching = False
-        state.last_query, state.last_sort = query, sort_val
-        state.selected = {i for i in prev if i < len(state.results)} if keep_selection else set()
-        state.anchor = -1 if not keep_selection else state.anchor
     except EngineUnavailableError as e:
-        state.engine_ok, state.engine_msg = False, str(e)
-        state.searching, state.results, state.total = False, [], 0
-        snack(str(e))
+        if state.seq == seq:  # 只处理最新一次搜索的错误，过期搜索静默丢弃
+            state.engine_ok, state.engine_msg = False, str(e)
+            state.searching, state.results, state.total = False, [], 0
+            snack(str(e))
+        return
     except SearchTimeoutError as e:
-        state.searching, state.results, state.total = False, [], 0
-        snack(str(e))
+        if state.seq == seq:
+            state.searching, state.results, state.total = False, [], 0
+            snack(str(e))
+        return
     except Exception as e:  # noqa: BLE001
-        state.searching = False
-        snack(f"搜索出错：{e}")
+        if state.seq == seq:
+            state.searching = False
+            snack(f"搜索出错：{e}")
+        return
+    if state.seq != seq:
+        return  # 输入已变化：过期结果静默丢弃，不触发任何 UI 更新
+    counts = await asyncio.to_thread(
+        history.get_counts, (r.full_path for r in outcome.rows)
+    )
+    if state.seq != seq:
+        return  # 取运行次数期间输入又变化：同样丢弃
+    for r in outcome.rows:
+        r.run_count = counts.get(r.full_path, 0)
+    prev = set(state.selected)
+    state.results = outcome.rows
+    state.total = outcome.total
+    state.elapsed_ms = (time.perf_counter() - t0) * 1000
+    state.searching = False
+    state.last_query, state.last_sort = query, sort_val
+    state.selected = {i for i in prev if i < len(state.results)} if keep_selection else set()
+    state.anchor = -1 if not keep_selection else state.anchor
 
 
 async def load_more(state: AppState) -> None:
@@ -117,10 +139,13 @@ async def load_more(state: AppState) -> None:
     if loaded >= state.total or loaded >= MAX_LOADED:
         return
     state.loading_more = True
+    seq = state.seq  # 记录本次分页对应的查询版本
     try:
         outcome = await asyncio.to_thread(
             services.engine.search, state.last_query, state.last_sort, loaded, PAGE_SIZE
         )
+        if state.seq != seq:
+            return  # 期间查询已变化：丢弃过期分页，避免混入新结果
         state.results = state.results + outcome.rows
     except Exception:  # noqa: BLE001
         pass
@@ -137,6 +162,10 @@ async def silent_refresh(state: AppState) -> None:
 
 async def _do_refresh(state: AppState) -> None:
     await asyncio.sleep(0.8)
+    # 用户正在输入（最近 0.5s 内有按键）时跳过静默刷新，避免半截查询的
+    # 结果在打字过程中落地打断输入；输入稳定后由防抖搜索自然覆盖
+    if time.monotonic() - services._last_input_ts < 0.5:
+        return
     if not state.searching:
         await run_search(state, keep_selection=True)
 

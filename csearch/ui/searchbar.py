@@ -67,7 +67,7 @@ def SearchBar(state: AppState):
                     key=f"search-{state.focus_epoch}" if state.focus == "search" else "search",
                     on_change=lambda e: logic.on_query_changed(state, e.control.value),
                     on_submit=lambda e: asyncio.create_task(_submit()),
-                    on_focus=lambda e: setattr(state, "focus", "search"),
+                    on_focus=lambda e: setattr(state, "focus", "search") if state.focus != "search" else None,
                 ),
                 _dropdown(state, "category", state.category, CATEGORIES, 96),
                 _dropdown(state, "time", state.time_range, TIME_RANGES, 92),

@@ -14,7 +14,7 @@ SORT_DATE_MODIFIED_ASC, SORT_DATE_MODIFIED_DESC = 13, 14
 # 每页加载条数 / 单会话最大加载量 / 输入防抖毫秒数
 PAGE_SIZE = 200
 MAX_LOADED = 5000
-DEBOUNCE_MS = 100
+DEBOUNCE_MS = 150
 
 # 查询看门狗（秒）：content: 未启用内容索引时触发实时扫描，超时保护
 QUERY_TIMEOUT = 5.0
