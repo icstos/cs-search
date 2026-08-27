@@ -50,6 +50,10 @@ def on_query_changed(state: AppState, value: str) -> None:
     if value == state.query:
         return  # IME 组合等重复事件：跳过，避免无效搜索与多余重建
     state.query = value
+    # 结果列表激活时吞掉原生滚轮（由滚轮桥统一驱动，避免双重滚动抵消）；
+    # 书签面板等场景恢复原生透传
+    if services.wheel is not None:
+        services.wheel.swallow = bool(value.strip())
     services._last_input_ts = time.monotonic()
     # 输入即作废所有在途搜索：过期结果静默丢弃、绝不落地 UI，
     # 打字过程不会被下方结果更新打断（输入手感优先于结果实时性）
@@ -61,6 +65,7 @@ def on_query_changed(state: AppState, value: str) -> None:
         state.searching, state.results, state.total = False, [], 0
         state.selected = set()
         state.last_query = ""
+        services.wheel_acc, state.max_ext = 0.0, 0.0
         return
     services._debounce = asyncio.create_task(_debounced(state))
 
@@ -128,6 +133,8 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
     state.elapsed_ms = (time.perf_counter() - t0) * 1000
     state.searching = False
     state.last_query, state.last_sort = query, sort_val
+    # 新结果集：滚轮累计值与滚动范围归零（列表回到顶部）
+    services.wheel_acc, state.max_ext = 0.0, 0.0
     state.selected = {i for i in prev if i < len(state.results)} if keep_selection else set()
     state.anchor = -1 if not keep_selection else state.anchor
 
@@ -244,7 +251,11 @@ async def scroll_results(state: AppState, delta: int | None = None, *, row: int 
     """滚动结果列表：delta = 相对像素增量；row = 滚动到指定行（用于键盘导航）。
 
     flet 0.86 桌面客户端部分环境不投递滚轮/拖拽事件到 Flutter，此处统一走
-    ListView.scroll_to() 程序化滚动（滚轮桥 / 键盘翻页均复用）。"""
+    ListView.scroll_to() 程序化滚动（滚轮桥 / 键盘翻页均复用）。
+
+    注意：scroll_to(delta=) 在部分客户端会与原生滚轮互相抵消（净滚动几乎为
+    零），因此滚轮/翻页统一换算为绝对偏移（本地累计值 services.wheel_acc，
+    由 on_scroll 事件持续同步真实位置），再调用 scroll_to(offset=)。"""
     if not state.results:
         return
     lv = services.results_list_ref
@@ -256,7 +267,14 @@ async def scroll_results(state: AppState, delta: int | None = None, *, row: int 
             offset = max(0, row * 30 - 90)
             await lv.current.scroll_to(offset=offset)
         elif delta:
-            await lv.current.scroll_to(delta=delta)
+            acc = services.wheel_acc + delta
+            # 绝对偏移不能为负：flet 客户端把负 offset 解释为“距末尾”滚动
+            # （maxScrollExtent + offset + 1），滚轮从顶部向上滚会直接跳到底部
+            acc = max(0.0, acc)
+            if state.max_ext > 0:
+                acc = min(acc, state.max_ext)
+            services.wheel_acc = acc
+            await lv.current.scroll_to(offset=acc)
     except Exception:  # noqa: BLE001
         pass
 
@@ -827,6 +845,8 @@ async def init_app(state: AppState) -> None:
     init_query = os.environ.get("CSEARCH_QUERY", "").strip()
     if init_query:
         state.query = init_query
+        if services.wheel is not None:
+            services.wheel.swallow = True
     await run_search(state)
 
 

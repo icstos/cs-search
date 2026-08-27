@@ -7,6 +7,16 @@
 把滚动量经线程安全回调抛给调用方（由 logic 桥接回 asyncio 主循环，
 对结果列表调用 scroll_to() 完成滚动）。
 
+滚轮方向约定：Windows 中 WM_MOUSEWHEEL 的 delta 正负与“内容滚动方向”
+相反（+120 = 向前滚 = 内容向上）。本模块统一转换为“正 = 内容向下滚动”
+的像素增量后再上报，调用方直接按方向使用。
+
+吞掉原生滚轮：flet 客户端收到 WM_MOUSEWHEEL 后也会自行滚动（不同环境
+步长/方向不一，且与桥的跳转互相抵消，实测滚轮几乎无法滚动）。因此当
+光标位于主窗口内且 swallow 开关开启（结果列表激活）时，钩子直接吞掉
+该事件（不传给后续钩子与目标窗口），由桥统一驱动滚动，保证所有环境下
+行为一致。书签面板等非结果列表场景 swallow 关闭，原生滚轮正常透传。
+
 与托盘/热键遵循同一模式：钩子线程 → 线程安全队列 → asyncio 主循环。
 不 import 任何 csearch 业务模块，完全解耦、失败降级（start() 返回 False）。
 """
@@ -42,10 +52,15 @@ class _MSLLHOOKSTRUCT(ctypes.Structure):
 
 
 class WheelBridge:
-    """滚轮桥：start() 启动钩子线程；窗口内滚轮量通过 on_wheel(delta_px) 回调上报。"""
+    """滚轮桥：start() 启动钩子线程；窗口内滚轮量通过 on_wheel(delta_px) 回调上报。
+
+    swallow：为 True 时（结果列表激活），吞掉主窗口内的原生滚轮事件，
+    由桥统一滚动；为 False 时（书签面板等）原生滚轮正常透传。
+    """
 
     def __init__(self, on_wheel: Callable[[int], None]) -> None:
         self._on_wheel = on_wheel
+        self.swallow = False  # 由调用方（logic）按界面状态开关
         self._hook: int | None = None
         self._thread: threading.Thread | None = None
         self._ready: threading.Event | None = None
@@ -112,22 +127,41 @@ class WheelBridge:
                 # mouseData 高 16 位为有符号滚轮增量（±120 一档，触控板可为小数档）
                 delta = ctypes.c_short(info.mouseData >> 16).value
                 if delta and self._inside_window(info.pt):
-                    px = round(delta * _PX_PER_NOTCH / 120.0)
+                    # Windows 滚轮符号：+120=向前滚（内容向上），-120=向后滚
+                    # （内容向下）；取反转换为“正=内容向下”的像素增量
+                    px = -round(delta * _PX_PER_NOTCH / 120.0)
                     if px:
                         self._on_wheel(px)
+                    # 结果列表激活时吞掉原生滚轮：flet 客户端自行滚动会与桥的
+                    # 跳转互相抵消（实测每档净滚动几乎为零），统一由桥驱动
+                    if self.swallow:
+                        return 1
             except Exception:  # noqa: BLE001
                 pass
         return ctypes.windll.user32.CallNextHookEx(self._hook, n_code, wparam, lparam)
 
     def _inside_window(self, pt: wt.POINT) -> bool:
-        """滚轮位置是否在主窗口内（含可见性检查，隐藏到托盘时不响应）。"""
+        """滚轮位置是否在主窗口内（含可见性检查，隐藏到托盘时不响应）。
+
+        低级钩子回调的坐标为物理像素，而本进程默认 DPI 感知下 GetWindowRect
+        返回虚拟化坐标，在缩放显示器（125%/150%/175%…）上二者不一致会导致
+        误判、桥接完全失效。改用 DwmGetWindowAttribute 取物理像素窗口边界
+        （该 API 不受调用进程 DPI 感知影响），与钩子坐标同单位后再比较。
+        """
         try:
             user32 = ctypes.windll.user32
             hwnd = user32.FindWindowW(None, "CSearch - 极速文件搜索")
             if not hwnd or not user32.IsWindowVisible(hwnd):
                 return False
             rect = wt.RECT()
-            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            try:
+                dwm = ctypes.windll.dwmapi
+                if dwm.DwmGetWindowAttribute(
+                    hwnd, 9, ctypes.byref(rect), ctypes.sizeof(rect)
+                ) != 0:  # DWMWA_EXTENDED_FRAME_BOUNDS=9，失败则回退 GetWindowRect
+                    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            except Exception:  # noqa: BLE001
+                user32.GetWindowRect(hwnd, ctypes.byref(rect))
             return rect.left <= pt.x <= rect.right and rect.top <= pt.y <= rect.bottom
         except Exception:  # noqa: BLE001
             return False

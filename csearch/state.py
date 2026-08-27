@@ -31,6 +31,7 @@ class AppState:
     total: int = 0
     searching: bool = False
     elapsed_ms: float = 0.0
+    max_ext: float = 0.0  # 列表当前最大滚动范围（on_scroll 同步，滚轮夹紧用）
 
     # 引擎状态
     engine_ok: bool = True
@@ -85,6 +86,7 @@ class Services:
         self.tray: TrayManager | None = None
         self.wheel: WheelBridge | None = None
         self.results_list_ref = None  # 结果列表 Ref（滚动兜底用，由 Results 组件注册）
+        self.wheel_acc = 0.0  # 滚轮绝对滚动累计值（on_scroll 事件持续同步）
         self.state: AppState | None = None
         self._debounce: object | None = None
         self._refresh: object | None = None

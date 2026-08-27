@@ -43,6 +43,10 @@ def Results(state: AppState):
         pixels = float(getattr(e, "pixels", 0) or 0)
         max_ext = float(getattr(e, "max_scroll_extent", 0) or 0)
         viewport = float(getattr(e, "viewport_dimension", 0) or 0)
+        # 同步真实滚动位置：滚轮/键盘/拖拽/增量加载后，累计值跟随实际位置，
+        # 保证下一次滚轮从正确位置继续；max_ext 用于滚轮目标夹紧
+        services.wheel_acc = pixels
+        state.max_ext = max_ext
         if max_ext > 0 and pixels + viewport >= max_ext - 150:
             asyncio.create_task(logic.load_more(state))
 
