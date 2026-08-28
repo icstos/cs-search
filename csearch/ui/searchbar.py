@@ -30,6 +30,11 @@ def SearchBar(state: AppState):
         # 再次回车打开选中结果；若已有选中（鼠标点击等）则直接打开。
         if not state.query.strip():
             return
+        # 回车优先：取消仍在防抖等待中的搜索任务，避免其与回车搜索竞争
+        # 导致结果被 seq 守卫丢弃（回车后拿不到结果）
+        if services._debounce is not None:
+            services._debounce.cancel()
+            services._debounce = None
         # 防抖未触发 / 搜索进行中时，先按当前条件落库查询，保证选中基于最新结果
         current = services.engine.build_query(state.query, state.category, state.time_range, state.size_range)
         if state.searching or not state.results or state.last_query != current:

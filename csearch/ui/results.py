@@ -18,6 +18,8 @@ from csearch.ui.icons import icon_for
 
 _BORDER, _HEADER_BG, _ROW_H = "#E4E7ED", "#F1F3F4", 30
 # (列名, 标题, 对齐: -1 左 / 0 中 / 1 右)
+# (列名, 标题, 对齐: -1 左 / 0 中 / 1 右)
+# (列名, 标题, 对齐: -1 左 / 0 中 / 1 右)
 _COLUMNS = [("name", "名称", -1), ("path", "路径", -1), ("size", "大小", 1),
            ("mtime", "修改时间", 0), ("run_count", "次数", 1)]
 _ALIGNMENT = {-1: ft.Alignment(-1, 0), 0: ft.Alignment(0, 0), 1: ft.Alignment(1, 0)}
@@ -27,12 +29,60 @@ _TEXT_ALIGN = {-1: ft.TextAlign.LEFT, 0: ft.TextAlign.CENTER, 1: ft.TextAlign.RI
 @ft.component
 def Results(state: AppState):
     lv_ref = ft.use_ref(ft.ListView)
+    menu_ref = ft.use_ref(None)  # 共享右键菜单 Ref（挂载后由框架赋值）
     # 滚轮桥/键盘翻页需要程序化滚动：把列表 Ref 注册到 services 供 logic 使用
     services.results_list_ref = lv_ref
 
+    # 共享右键菜单：所有行共用一个 ContextMenu（右键时记录目标行再打开），
+    # 避免每行内联 8 个菜单项（200 行 → 1600+ 控件）拖慢结果渲染
+    def _act(fn):
+        def _h(e):
+            idx = services.menu_row
+            if idx >= 0:
+                logic.ensure_selected(state, idx)
+            asyncio.create_task(fn(state))
+
+        return _h
+
+    def _run_count(e):
+        idx = services.menu_row
+        if idx >= 0:
+            logic.ensure_selected(state, idx)
+            logic.request_run_count(state, idx)
+
+    menu = [
+        ft.PopupMenuItem(content="打开", icon=ft.Icons.OPEN_IN_NEW, on_click=_act(logic.open_selected)),
+        ft.PopupMenuItem(content="打开文件所在位置", icon=ft.Icons.FOLDER_OPEN, on_click=_act(logic.reveal_selected)),
+        ft.PopupMenuItem(content="复制完整路径", icon=ft.Icons.CONTENT_COPY, on_click=_act(logic.copy_paths)),
+        ft.PopupMenuItem(content="复制文件名", icon=ft.Icons.CONTENT_PASTE, on_click=_act(logic.copy_names)),
+        ft.PopupMenuItem(content="设置运行次数", icon=ft.Icons.TIMER, on_click=_run_count),
+        ft.PopupMenuItem(),
+        ft.PopupMenuItem(content="删除到回收站", icon=ft.Icons.DELETE_OUTLINE, on_click=_act(logic.request_delete)),
+        ft.PopupMenuItem(content="永久删除", icon=ft.Icons.DELETE_FOREVER, on_click=_act(logic.request_delete)),
+    ]
+
+    def _on_row_secondary(index: int, e) -> None:
+        # 右键行（按下即触发，事件携带光标位置）：记录目标行并在光标处打开共享菜单；
+        # 菜单项点击时按目标行执行（菜单项与行解耦，渲染开销极低）
+        services.menu_row = index
+        pos = getattr(e, "global_position", None)
+        asyncio.create_task(_open_menu(pos))
+
+    async def _open_menu(pos) -> None:
+        m = menu_ref.current
+        if m is None:
+            return
+        try:
+            if pos is not None and getattr(pos, "x", None) is not None:
+                await m.open(global_position=ft.Offset(pos.x, pos.y))
+            else:
+                await m.open()
+        except Exception:  # noqa: BLE001
+            pass
+
     # 行控件缓存：结果集/选中集/行宽快照变化时重建（拖拽中表头每帧跟手，行按快照节流重排）
     rows = ft.use_memo(
-        lambda: [_row(state, i, item) for i, item in enumerate(state.results)],
+        lambda: [_row(state, i, item, _on_row_secondary) for i, item in enumerate(state.results)],
         [state.results, state.selected, state.row_width_snap],
     )
 
@@ -72,16 +122,26 @@ def Results(state: AppState):
         # 注意：不能用 KeyboardListener 包裹 ListView —— flet 0.86 客户端中该包裹
         # 会使 ListView 的程序化滚动（scroll_to）立即回弹到顶部，滚轮/键盘滚动全部失效。
         # 列表按键统一走页面级 page.on_keyboard_event（见 logic.on_keyboard）。
-        body = ft.ListView(
-            ref=lv_ref,
-            controls=rows,
+        # 共享右键菜单包裹（secondary_trigger=None 纯监听，不参与输入/焦点）；
+        # ContextMenu 不传递 expand，外层套 Container(expand=True) 保证列表撑满
+        body = ft.Container(
             expand=True,
-            spacing=0,
-            padding=ft.Padding(0, 4, 0, 4),
-            build_controls_on_demand=True,
-            item_extent=_ROW_H,  # 行高固定：懒加载精确估算滚动范围
-            scroll=ft.Scrollbar(thumb_visibility=True, track_visibility=True, thickness=10),
-            on_scroll=_on_scroll,
+            content=ft.ContextMenu(
+                ref=menu_ref,
+                items=menu,
+                secondary_trigger=None,
+                content=ft.ListView(
+                    ref=lv_ref,
+                    controls=rows,
+                    expand=True,
+                    spacing=0,
+                    padding=ft.Padding(0, 4, 0, 4),
+                    build_controls_on_demand=True,
+                    item_extent=_ROW_H,  # 行高固定：懒加载精确估算滚动范围
+                    scroll=ft.Scrollbar(thumb_visibility=True, track_visibility=True, thickness=10),
+                    on_scroll=_on_scroll,
+                ),
+            ),
         )
 
     return ft.Column(
@@ -157,36 +217,15 @@ def _hover_col(state: AppState, col: str, e) -> None:
     state.hover_col = col if getattr(e, "data", "") == "true" else None
 
 
-def _row(state: AppState, index: int, item: ResultItem) -> ft.Control:
+def _row(state: AppState, index: int, item: ResultItem,
+          on_secondary) -> ft.Control:
     selected = index in state.selected
     bg = "#E8F0FE" if selected else ("#FFFFFF" if index % 2 == 0 else "#F6F8FA")
     icon, color = icon_for(item.name, item.is_folder)
     widths = state.col_widths
 
-    def act(fn):
-        def _h(e):
-            logic.ensure_selected(state, index)
-            asyncio.create_task(fn(state))
-
-        return _h
-
-    menu = [
-        ft.PopupMenuItem(content="打开", icon=ft.Icons.OPEN_IN_NEW, on_click=act(logic.open_selected)),
-        ft.PopupMenuItem(content="打开文件所在位置", icon=ft.Icons.FOLDER_OPEN, on_click=act(logic.reveal_selected)),
-        ft.PopupMenuItem(content="复制完整路径", icon=ft.Icons.CONTENT_COPY, on_click=act(logic.copy_paths)),
-        ft.PopupMenuItem(content="复制文件名", icon=ft.Icons.CONTENT_PASTE, on_click=act(logic.copy_names)),
-        ft.PopupMenuItem(content="设置运行次数", icon=ft.Icons.TIMER,
-                          on_click=lambda e: (logic.ensure_selected(state, index),
-                                              logic.request_run_count(state, index))),
-        ft.PopupMenuItem(),
-        ft.PopupMenuItem(content="删除到回收站", icon=ft.Icons.DELETE_OUTLINE,
-                          on_click=lambda e: logic.request_delete(state)),
-        ft.PopupMenuItem(content="永久删除", icon=ft.Icons.DELETE_FOREVER,
-                          on_click=lambda e: logic.request_delete(state)),
-    ]
-
-    return ft.ContextMenu(
-        secondary_items=menu,
+    return ft.GestureDetector(
+        on_secondary_tap_down=lambda e, i=index: on_secondary(i, e),
         content=ft.Container(
             height=_ROW_H,
             bgcolor=bg,

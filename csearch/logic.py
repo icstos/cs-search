@@ -127,16 +127,34 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
         return  # 取运行次数期间输入又变化：同样丢弃
     for r in outcome.rows:
         r.run_count = counts.get(r.full_path, 0)
+    # 即时响应 + 输入稳定：先更新轻量状态（状态栏总数/耗时/搜索中立即刷新），
+    # 再分片落地结果。flet 组件渲染是同步操作无法被抢占，一次性渲染 200 行会
+    # 阻塞事件循环 50~200ms 造成输入卡顿；分片渲染 + 每批让出（await sleep）
+    # 让键盘/滚轮事件在批次间优先处理——结果即时可见（渐进填充），输入不受影响。
     prev = set(state.selected)
-    state.results = outcome.rows
+    rows = outcome.rows
     state.total = outcome.total
     state.elapsed_ms = (time.perf_counter() - t0) * 1000
     state.searching = False
     state.last_query, state.last_sort = query, sort_val
     # 新结果集：滚轮累计值与滚动范围归零（列表回到顶部）
     services.wheel_acc, state.max_ext = 0.0, 0.0
-    state.selected = {i for i in prev if i < len(state.results)} if keep_selection else set()
+    for i in range(0, len(rows), _RESULT_CHUNK):
+        if state.seq != seq:
+            return  # 输入已变化：停止填充，由新搜索接手（中间态不落地 UI）
+        state.results = rows[:i + _RESULT_CHUNK]
+        # 让出事件循环并等待 flet 后台调度器完成本片渲染（scheduler 会把
+        # 同一迭代内的多次赋值合并，sleep(0) 不够，需给它实际运行窗口），
+        # 使键盘/滚轮事件可在批次间优先处理
+        await asyncio.sleep(0.02)
+    if state.seq != seq:
+        return
+    state.selected = {i for i in prev if i < len(rows)} if keep_selection else set()
     state.anchor = -1 if not keep_selection else state.anchor
+
+
+# 结果落地分片大小：每批渲染之间让出事件循环（输入事件优先处理）
+_RESULT_CHUNK = 40
 
 
 async def load_more(state: AppState) -> None:
@@ -153,7 +171,13 @@ async def load_more(state: AppState) -> None:
         )
         if state.seq != seq:
             return  # 期间查询已变化：丢弃过期分页，避免混入新结果
-        state.results = state.results + outcome.rows
+        # 分片追加：每批渲染之间让出事件循环，避免长列表重渲染长时间阻塞
+        # 滚动/输入（flet 渲染为同步操作，无法被抢占）
+        for i in range(0, len(outcome.rows), _RESULT_CHUNK):
+            if state.seq != seq:
+                return
+            state.results = state.results + outcome.rows[:i + _RESULT_CHUNK]
+            await asyncio.sleep(0.02)
     except Exception:  # noqa: BLE001
         pass
     finally:
@@ -263,8 +287,11 @@ async def scroll_results(state: AppState, delta: int | None = None, *, row: int 
         return
     try:
         if row is not None:
-            # 行高固定 30px：把选中行滚到视口中部附近
+            # 行高固定 30px：把选中行滚到视口中部附近；超出当前滚动范围时
+            # 夹紧到最大范围（避免 flet 跳转越界后缓慢回弹）
             offset = max(0, row * 30 - 90)
+            if state.max_ext > 0:
+                offset = min(offset, state.max_ext)
             await lv.current.scroll_to(offset=offset)
         elif delta:
             acc = services.wheel_acc + delta
@@ -787,7 +814,9 @@ async def on_keyboard(state: AppState | None, e: Any) -> None:
         case (False, "escape") if state.focus == "list":
             focus_search(state)
         case (False, "escape"):
-            state.query = ""
+            # 与输入框清空一致：同步清空结果，避免书签/结果区切换时重新挂载
+            # 旧结果列表造成首键卡顿
+            on_query_changed(state, "")
             focus_search(state)
         case (False, "arrowdown") if state.focus == "search" and state.results:
             state.selected, state.anchor = {0}, 0

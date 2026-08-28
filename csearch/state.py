@@ -87,6 +87,7 @@ class Services:
         self.wheel: WheelBridge | None = None
         self.results_list_ref = None  # 结果列表 Ref（滚动兜底用，由 Results 组件注册）
         self.wheel_acc = 0.0  # 滚轮绝对滚动累计值（on_scroll 事件持续同步）
+        self.menu_row = -1  # 共享右键菜单的目标行（右键时记录，菜单项点击时执行）
         self.state: AppState | None = None
         self._debounce: object | None = None
         self._refresh: object | None = None
