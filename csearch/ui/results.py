@@ -40,7 +40,9 @@ def Results(state: AppState):
             idx = services.menu_row
             if idx >= 0:
                 logic.ensure_selected(state, idx)
-            asyncio.create_task(fn(state))
+            result = fn(state)  # fn 可能是同步或异步（打开/复制/删除等）
+            if asyncio.iscoroutine(result):
+                asyncio.create_task(result)
 
         return _h
 
@@ -57,8 +59,7 @@ def Results(state: AppState):
         ft.PopupMenuItem(content="复制文件名", icon=ft.Icons.CONTENT_PASTE, on_click=_act(logic.copy_names)),
         ft.PopupMenuItem(content="设置运行次数", icon=ft.Icons.TIMER, on_click=_run_count),
         ft.PopupMenuItem(),
-        ft.PopupMenuItem(content="删除到回收站", icon=ft.Icons.DELETE_OUTLINE, on_click=_act(logic.request_delete)),
-        ft.PopupMenuItem(content="永久删除", icon=ft.Icons.DELETE_FOREVER, on_click=_act(logic.request_delete)),
+        ft.PopupMenuItem(content="删除到回收站", icon=ft.Icons.DELETE_OUTLINE, on_click=_act(logic.delete_selected)),
     ]
 
     def _on_row_secondary(index: int, e) -> None:

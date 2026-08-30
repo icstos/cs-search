@@ -125,21 +125,17 @@ def copy_names(items: list[ResultItem]) -> str | None:
         return str(e)
 
 
-def delete_items(items: list[ResultItem], permanent: bool) -> list[str]:
-    """删除（回收站 / 永久）。返回错误列表。"""
+def delete_to_trash(items: list[ResultItem]) -> tuple[list[str], list[str]]:
+    """删除选中项到回收站（无需确认，可恢复）。返回 (成功删除的 full_path 列表, 错误列表)。"""
+    deleted: list[str] = []
     errors: list[str] = []
     for item in items:
         try:
-            if permanent:
-                if item.is_folder:
-                    shutil.rmtree(item.full_path)
-                else:
-                    os.remove(item.full_path)
-            else:
-                send2trash(item.full_path)
+            send2trash(item.full_path)
+            deleted.append(item.full_path)
         except Exception as e:  # noqa: BLE001
             errors.append(f"{item.name}: {e}")
-    return errors
+    return deleted, errors
 
 
 def open_folder(path: str) -> str | None:

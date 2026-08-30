@@ -1,4 +1,7 @@
-"""对话框组件：删除确认 / 书签命名 / 热键设置 / 大小区间（声明式 use_dialog）。"""
+"""对话框组件：书签命名 / 热键设置 / 大小区间 / 运行次数（声明式 use_dialog）。
+
+删除不再需要确认（默认移入回收站），故无删除对话框。
+"""
 
 from __future__ import annotations
 
@@ -10,7 +13,6 @@ from csearch.state import AppState
 
 def dialogs(state: AppState) -> None:
     """根据 state.dialog 挂载对应对话框（None = 全部关闭）。"""
-    ft.use_dialog(_delete(state) if state.dialog == "delete" else None)
     ft.use_dialog(_bookmark(state) if state.dialog == "bookmark" else None)
     ft.use_dialog(_hotkey(state) if state.dialog == "hotkey" else None)
     ft.use_dialog(_size(state) if state.dialog == "size" else None)
@@ -47,27 +49,6 @@ def _run_count(state: AppState) -> ft.AlertDialog:
 
 def _close(state: AppState):
     return lambda e: setattr(state, "dialog", None)
-
-
-def _delete(state: AppState) -> ft.AlertDialog:
-    count = len(logic.selected_items(state))
-    return ft.AlertDialog(
-        modal=True,
-        title=ft.Text("删除确认"),
-        content=ft.Text(
-            f"确定删除选中的 {count} 项吗？\n\n"
-            "「删除到回收站」可恢复；「永久删除」不可恢复，请谨慎操作。",
-            size=13,
-        ),
-        actions=[
-            ft.FilledButton("删除到回收站", icon=ft.Icons.DELETE_OUTLINE,
-                            on_click=lambda e: logic.do_delete(state, False)),
-            ft.OutlinedButton("永久删除", icon=ft.Icons.DELETE_FOREVER,
-                              on_click=lambda e: logic.do_delete(state, True)),
-            ft.TextButton("取消", on_click=_close(state)),
-        ],
-        on_dismiss=_close(state),
-    )
 
 
 def _bookmark(state: AppState) -> ft.AlertDialog:

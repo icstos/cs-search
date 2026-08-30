@@ -239,6 +239,9 @@ def on_row_click(state: AppState, index: int) -> None:
         state.anchor = index
     else:
         state.selected, state.anchor = {index}, index
+    # 鼠标点击选中同样进入列表焦点态：搜索框解除 autofocus（键盘焦点移出），
+    # 后续 Delete / Enter / 方向键等列表快捷键对鼠标选中同样生效
+    state.focus = "list"
     now = time.monotonic()
     if now - services._last_click_t < 0.4 and services._last_click_i == index:
         services._last_click_t = 0.0
@@ -393,20 +396,32 @@ async def copy_names(state: AppState) -> None:
     snack(f"复制失败：{error}" if error else f"已复制 {len(items)} 个文件名")
 
 
-def request_delete(state: AppState) -> None:
-    if selected_items(state):
-        state.dialog = "delete"
+async def delete_selected(state: AppState) -> None:
+    """删除选中项到回收站（无需确认）。
 
-
-async def do_delete(state: AppState, permanent: bool) -> None:
-    state.dialog = None
+    删除成功后：本地即时移除已删除项（不等 Everything 索引刷新），刷新总数；
+    选中「下一项」——原首个被删行的位置（删到末尾则选最后一项）；随后后台
+    重查与索引同步（保留选中，索引未刷新时结果可能短暂回显，随后自动纠正）。
+    """
     items = selected_items(state)
     if not items:
+        snack("未选中任何文件")
         return
-    errors = await asyncio.to_thread(ops.delete_items, items, permanent)
-    label = "永久删除" if permanent else "移入回收站"
-    snack(f"已{label} {len(items) - len(errors)} 项" + (f"，失败：{errors[0]}" if errors else ""))
-    await run_search(state, keep_selection=True)
+    first = min(state.selected)  # 首个被删行位置：本地移除后该位置即「下一项」
+    deleted_paths, errors = await asyncio.to_thread(ops.delete_to_trash, items)
+    if deleted_paths:
+        gone = set(deleted_paths)
+        state.results = [r for r in state.results if r.full_path not in gone]
+        state.total = max(0, state.total - len(deleted_paths))
+        if state.results:
+            target = min(first, len(state.results) - 1)
+            state.selected, state.anchor = {target}, target
+            asyncio.create_task(scroll_results(state, None, row=target))
+        else:
+            state.selected, state.anchor = set(), -1
+    snack(f"已移入回收站 {len(deleted_paths)} 项" + (f"，失败：{errors[0]}" if errors else ""))
+    if deleted_paths:
+        asyncio.create_task(run_search(state, keep_selection=True))
 
 
 def launch_everything() -> None:
@@ -829,6 +844,9 @@ async def on_keyboard(state: AppState | None, e: Any) -> None:
             move_selection(state, -1)
         case (False, "enter") if state.focus == "list":
             await open_selected(state)
+        case (False, "delete") if state.focus == "list":
+            # Delete：选中项直接移入回收站（无需确认），列表即时更新并选中下一项
+            await delete_selected(state)
         case (False, "pageup") if state.focus == "list":
             await scroll_results(state, -500)
         case (False, "pagedown") if state.focus == "list":

@@ -55,8 +55,8 @@ class AppState:
     hover_col: str | None = None  # 鼠标悬停的分隔条列
     row_width_snap: dict[str, int] | None = None  # 行控件重建的节流快照（拖拽时 60ms 更新一次）
 
-    # 对话框（None = 关闭）
-    dialog: str | None = None  # "delete" | "bookmark" | "hotkey" | "size" | "run_count"
+    # 对话框（None = 关闭；删除无需确认，直接移入回收站）
+    dialog: str | None = None  # "bookmark" | "hotkey" | "size" | "run_count"
     bm_edit_id: str | None = None
     bm_name: str = ""
     hotkey_text: str = ""
