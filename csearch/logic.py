@@ -726,6 +726,10 @@ async def show_window(state: AppState) -> None:
     # 托盘/热键唤回：强制获得 OS 键盘焦点（Windows 前台锁定兜底）
     _force_foreground_windows(p.title)
     focus_search(state)
+    # 快捷键/托盘唤回窗口：标记全选搜索框已有内容（输入即可直接覆盖旧查询），
+    # 由 SearchBar 组件在下次重挂载时把 selection 作为构造参数下发，on_focus 消费后不再重复。
+    if state.query:
+        services.select_on_focus = True
 
 
 def hide_to_tray(state: AppState) -> None:
@@ -772,6 +776,10 @@ def on_window_event(state: AppState | None, e: Any) -> None:
             hide_to_tray(state)
         case ft.WindowEventType.SHOW:
             focus_search(state)
+            # 重装全选标记：窗口被唤回时可能先触发 SHOW 再 focus_search，
+            # 保证最终一次重挂载仍带 selection（与 show_window 的设置保持幂等）
+            if state.query:
+                services.select_on_focus = True
         case ft.WindowEventType.RESTORE:
             # 最小化 → 恢复（任务栏/Alt+Tab 唤回）同样需要抢回搜索框焦点
             focus_search(state)

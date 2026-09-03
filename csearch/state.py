@@ -86,6 +86,7 @@ class Services:
         self.tray: TrayManager | None = None
         self.wheel: WheelBridge | None = None
         self.results_list_ref = None  # 结果列表 Ref（滚动兜底用，由 Results 组件注册）
+        self.select_on_focus = False  # 快捷键唤回时全选搜索框内容（一次性标记，on_focus 消费）
         self.wheel_acc = 0.0  # 滚轮绝对滚动累计值（on_scroll 事件持续同步）
         self.menu_row = -1  # 共享右键菜单的目标行（右键时记录，菜单项点击时执行）
         self.state: AppState | None = None

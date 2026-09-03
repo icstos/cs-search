@@ -25,6 +25,14 @@ def _dropdown(state: AppState, field: str, value: str, options: list[tuple[str, 
 
 @ft.component
 def SearchBar(state: AppState):
+    def _on_search_focus(e) -> None:
+        # 搜索框获得焦点：记录焦点态，并消费「唤回全选」的一次性标记。
+        # 标记存在 services（非可观测），消费不触发重绘，当前挂载的 selection 保持不变；
+        # 之后用户点击结果再点回输入框等场景不会反复全选。
+        if state.focus != "search":
+            state.focus = "search"
+        services.select_on_focus = False
+
     async def _submit() -> None:
         # 回车两步走：第一次仅选中「运行次数最大」的结果（无运行记录则选第一个），
         # 再次回车打开选中结果；若已有选中（鼠标点击等）则直接打开。
@@ -69,10 +77,13 @@ def SearchBar(state: AppState):
                     text_size=14,
                     ignore_up_down_keys=True,
                     autofocus=state.focus == "search",
+                    # 快捷键/托盘唤回窗口：搜索框已有内容全选，输入可直接覆盖旧查询（一次性）
+                    selection=(ft.TextSelection(base_offset=0, extent_offset=len(state.query))
+                               if services.select_on_focus and state.query else None),
                     key=f"search-{state.focus_epoch}" if state.focus == "search" else "search",
                     on_change=lambda e: logic.on_query_changed(state, e.control.value),
                     on_submit=lambda e: asyncio.create_task(_submit()),
-                    on_focus=lambda e: setattr(state, "focus", "search") if state.focus != "search" else None,
+                    on_focus=_on_search_focus,
                 ),
                 _dropdown(state, "category", state.category, CATEGORIES, 96),
                 _dropdown(state, "time", state.time_range, TIME_RANGES, 92),
