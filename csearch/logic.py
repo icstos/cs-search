@@ -157,6 +157,17 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
 _RESULT_CHUNK = 40
 
 
+def no_more_to_load(state: AppState) -> bool:
+    """底部是否已无更多结果可增量加载（硬边界，用于抑制越界弹动）。
+
+    终止条件与 load_more 一致：已加载数达到引擎总数或 MAX_LOADED 上限；
+    搜索中/分页加载中/尚未发起查询时返回 False（列表还会延展，非硬边界）。"""
+    if state.searching or state.loading_more or not state.last_query:
+        return False
+    loaded = len(state.results)
+    return loaded >= state.total or loaded >= MAX_LOADED
+
+
 async def load_more(state: AppState) -> None:
     if state.searching or not state.last_query or state.loading_more:
         return

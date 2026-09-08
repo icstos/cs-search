@@ -95,9 +95,24 @@ def Results(state: AppState):
         max_ext = float(getattr(e, "max_scroll_extent", 0) or 0)
         viewport = float(getattr(e, "viewport_dimension", 0) or 0)
         # 同步真实滚动位置：滚轮/键盘/拖拽/增量加载后，累计值跟随实际位置，
-        # 保证下一次滚轮从正确位置继续；max_ext 用于滚轮目标夹紧
-        services.wheel_acc = pixels
+        # 保证下一次滚轮从正确位置继续；max_ext 用于滚轮目标夹紧。越界弹动时
+        # pixels 会落到 [0, max_ext] 之外，这里一并夹紧，避免把回弹偏移带进
+        # 下一次滚轮换算。
+        services.wheel_acc = (
+            min(max(pixels, 0.0), max_ext) if max_ext > 0 else max(pixels, 0.0)
+        )
         state.max_ext = max_ext
+        # 边界弹动抑制：flet 0.86 不暴露 ScrollPhysics，无法直接关闭回弹，
+        # 改为在越界（OVERSCROLL / 越界 pixels）的瞬间跳回边界。顶部永远没有
+        # 更早内容，属硬边界；底部仅当已无更多可增量加载时才是硬边界——尚有
+        # 下一页时不拦截，交给 load_more 自然延展列表。duration=0 瞬时跳回。
+        snap = None
+        if pixels <= -0.5:
+            snap = 0.0
+        elif max_ext > 0 and pixels >= max_ext + 0.5 and logic.no_more_to_load(state):
+            snap = max_ext
+        if snap is not None and lv_ref.current is not None:
+            asyncio.create_task(lv_ref.current.scroll_to(offset=snap, duration=0))
         if max_ext > 0 and pixels + viewport >= max_ext - 150:
             asyncio.create_task(logic.load_more(state))
 
