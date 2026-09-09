@@ -12,7 +12,7 @@ dependencies = [
     "pystray>=0.19.5",
     "pillow>=10.0",
     "pyperclip>=1.8",
-    "Send2Trash>=1.8",
+    "send2trash>=2.1.0",
     "sqlmodel>=0.0.22",
 ]
 
