@@ -141,7 +141,13 @@ class WheelBridge:
         return ctypes.windll.user32.CallNextHookEx(self._hook, n_code, wparam, lparam)
 
     def _inside_window(self, pt: wt.POINT) -> bool:
-        """滚轮位置是否在主窗口内（含可见性检查，隐藏到托盘时不响应）。
+        """滚轮是否应交给本程序：主窗口可见、且为当前前台窗口、且光标落在其
+        物理边界内，三者同时满足才成立。
+
+        必须额外校验前台窗口：WH_MOUSE_LL 是全局钩子，若只判断“光标在窗口矩形
+        内 + 窗口可见”，当本程序处于后台（被别的窗口盖住或未聚焦）而光标恰好
+        位于其矩形上方滚动时，钩子会吞掉本该给前台程序的滚轮，表现为后台程序
+        占用滚轮。因此只有本程序在前台时才接管/吞掉滚轮，其余一律透传。
 
         低级钩子回调的坐标为物理像素，而本进程默认 DPI 感知下 GetWindowRect
         返回虚拟化坐标，在缩放显示器（125%/150%/175%…）上二者不一致会导致
@@ -152,6 +158,9 @@ class WheelBridge:
             user32 = ctypes.windll.user32
             hwnd = user32.FindWindowW(None, "CSearch - 极速文件搜索")
             if not hwnd or not user32.IsWindowVisible(hwnd):
+                return False
+            # 非前台窗口不接管滚轮：避免后台时劫持其他程序的滚动（吞事件在 _callback）
+            if user32.GetForegroundWindow() != hwnd:
                 return False
             rect = wt.RECT()
             try:
