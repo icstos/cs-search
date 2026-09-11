@@ -91,7 +91,9 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
             state.searching = False
             snack(msg)
             return
-    query = services.engine.build_query(state.query, state.category, state.time_range, state.size_range)
+    query = services.engine.build_query(
+        state.query, state.category, state.time_range, state.size_range, state.use_regex
+    )
     if not query.strip():
         state.searching, state.results, state.total = False, [], 0
         state.last_query = ""
@@ -235,6 +237,13 @@ def on_filter(state: AppState, field: str, value: str) -> None:
             state.size_range = value
         case _:
             return
+    if state.query.strip():
+        asyncio.create_task(run_search(state))
+
+
+def toggle_regex(state: AppState) -> None:
+    """切换正则表达式搜索（参考 Everything 的 Regex 开关）：翻转后按当前条件立即重查。"""
+    state.use_regex = not state.use_regex
     if state.query.strip():
         asyncio.create_task(run_search(state))
 

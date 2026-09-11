@@ -11,6 +11,27 @@ from csearch.state import AppState, services
 from csearch.types import CATEGORIES, SIZE_RANGES, TIME_RANGES
 
 
+def _regex_toggle(state: AppState) -> ft.Control:
+    """正则表达式搜索开关（简洁胶囊按钮，高亮表示已开启）。"""
+    on = state.use_regex
+    return ft.TextButton(
+        content=".*",
+        tooltip=("正则搜索：已开启，点击关闭（按正则匹配文件名）" if on
+                 else r"正则搜索：点击开启（参考 Everything，如 ^report.*\.xlsx$）"),
+        style=ft.ButtonStyle(
+            color="#1A73E8" if on else "#5F6368",
+            bgcolor="#E8F0FE" if on else "#F1F3F4",
+            padding=ft.Padding(10, 2, 10, 2),
+            shape=ft.StadiumBorder(),
+            side=ft.BorderSide(1, "#1A73E8" if on else "#DADCE0"),
+            text_style=ft.TextStyle(
+                size=12, weight=ft.FontWeight.W_600 if on else ft.FontWeight.W_500
+            ),
+        ),
+        on_click=lambda e: logic.toggle_regex(state),
+    )
+
+
 def _dropdown(state: AppState, field: str, value: str, options: list[tuple[str, str]], width: int) -> ft.Control:
     return ft.Dropdown(
         value=value,
@@ -44,7 +65,9 @@ def SearchBar(state: AppState):
             services._debounce.cancel()
             services._debounce = None
         # 防抖未触发 / 搜索进行中时，先按当前条件落库查询，保证选中基于最新结果
-        current = services.engine.build_query(state.query, state.category, state.time_range, state.size_range)
+        current = services.engine.build_query(
+            state.query, state.category, state.time_range, state.size_range, state.use_regex
+        )
         if state.searching or not state.results or state.last_query != current:
             await logic.run_search(state)
         if not state.results:
@@ -70,7 +93,11 @@ def SearchBar(state: AppState):
                 ft.Icon(ft.Icons.SEARCH, color="#5F6368", size=20),
                 ft.TextField(
                     value=state.query,
-                    hint_text="搜索文件名，支持 Everything 语法（ext: / content: / 正则…）",
+                    hint_text=(
+                        r"正则模式：输入正则表达式匹配文件名，如 ^report.*\.xlsx$"
+                        if state.use_regex
+                        else "搜索文件名，支持 Everything 语法（ext: / content: / 正则…）"
+                    ),
                     expand=True,
                     dense=True,
                     border=ft.InputBorder.NONE,
@@ -85,6 +112,7 @@ def SearchBar(state: AppState):
                     on_submit=lambda e: asyncio.create_task(_submit()),
                     on_focus=_on_search_focus,
                 ),
+                _regex_toggle(state),
                 _dropdown(state, "category", state.category, CATEGORIES, 96),
                 _dropdown(state, "time", state.time_range, TIME_RANGES, 92),
                 _dropdown(state, "size", state.size_range, SIZE_RANGES, 110),

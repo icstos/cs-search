@@ -23,6 +23,7 @@ class AppState:
     category: str = "all"
     time_range: str = "any"
     size_range: str = "any"
+    use_regex: bool = False  # 正则表达式搜索开关（内联 regex: 函数，参考 Everything）
     sort_col: str = "name"
     sort_desc: bool = False
 
@@ -70,7 +71,7 @@ class AppState:
 
     # 内部
     seq: int = 0              # 竞态防护：新查询序号
-    last_query: str = ""      # 最近执行的查询串（增量加载复用）
+    last_query: str = ""      # 最近执行的查询串（增量加载复用，正则已编码进 regex: 片段）
     last_sort: int = 0
     loading_more: bool = False  # 增量加载进行中（防并发重复追加）
     balloon_shown: bool = False

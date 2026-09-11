@@ -203,13 +203,22 @@ class SearchEngine:
 
     # ------------------------------------------------------------------ 查询
     @staticmethod
-    def build_query(keyword: str, category: str, time_range: str, size_range: str) -> str:
-        """组合 Everything 原生查询串：分类/时间/大小与关键词叠加，语法由服务端解析。"""
+    def build_query(keyword: str, category: str, time_range: str, size_range: str,
+                    regex: bool = False) -> str:
+        """组合 Everything 原生查询串：分类/时间/大小与关键词叠加，语法由服务端解析。
+
+        regex=True 时把关键词包成内联 ``regex:`` 函数，而不是用全局 Everything_SetRegex
+        （实测全局正则会把 folder:/dm: 等过滤函数一并并入正则而返回 0 条）；内联写法让
+        正则只作用于搜索词，分类/时间/大小照常叠加。关键词含空白时用双引号包裹，
+        避免空格被当作 AND 拆分。"""
+        kw = keyword.strip()
+        if regex and kw:
+            kw = f'regex:"{kw}"' if any(c.isspace() for c in kw) else f"regex:{kw}"
         parts = [p for p in (
             _CATEGORY_QUERY.get(category, ""),
             _TIME_QUERY.get(time_range, ""),
             SearchEngine._size_query(size_range),
-            keyword.strip(),
+            kw,
         ) if p]
         return " ".join(parts)
 
