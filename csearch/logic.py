@@ -242,8 +242,16 @@ def on_filter(state: AppState, field: str, value: str) -> None:
 
 
 def toggle_regex(state: AppState) -> None:
-    """切换正则表达式搜索（参考 Everything 的 Regex 开关）：翻转后按当前条件立即重查。"""
+    """切换正则表达式搜索（参考 Everything 的 Regex 开关）。
+
+    翻转后立即按新模式重查：先取消仍在防抖窗口内的旧搜索（它稍后触发会靠 seq
+    守卫打断本次分片渲染，造成刷新竞争/闪烁），再以当前关键词 + 新正则态查询，
+    保证结果严格按切换后的搜索逻辑更新。无关键词时正则没有作用对象（结果区为
+    书签空态），无需查询。"""
     state.use_regex = not state.use_regex
+    if services._debounce is not None:
+        services._debounce.cancel()
+        services._debounce = None
     if state.query.strip():
         asyncio.create_task(run_search(state))
 
