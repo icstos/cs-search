@@ -35,6 +35,9 @@ HC_ACTION = 0
 # 滚轮每档（120）对应的滚动像素，接近 Flutter 桌面默认值
 _PX_PER_NOTCH = 53.0
 
+# 主窗口标题（查找句柄用，与 logic/tray 保持一致）
+_WINDOW_TITLE = "CSearch - 极速文件搜索"
+
 # 钩子回调原型
 _LOWLEVELHOOKPROC = ctypes.WINFUNCTYPE(
     ctypes.c_ssize_t, ctypes.c_int, wt.WPARAM, wt.LPARAM
@@ -61,6 +64,7 @@ class WheelBridge:
     def __init__(self, on_wheel: Callable[[int], None]) -> None:
         self._on_wheel = on_wheel
         self.swallow = False  # 由调用方（logic）按界面状态开关
+        self._hwnd = 0  # 主窗口句柄缓存（避免每次全局滚轮都 FindWindow 枚举）
         self._hook: int | None = None
         self._thread: threading.Thread | None = None
         self._ready: threading.Event | None = None
@@ -88,6 +92,21 @@ class WheelBridge:
             user32.SetWindowsHookExW.restype = wt.HHOOK
             user32.CallNextHookEx.argtypes = [wt.HHOOK, ctypes.c_int, wt.WPARAM, wt.LPARAM]
             user32.CallNextHookEx.restype = ctypes.c_ssize_t
+            # 句柄类 API 显式声明为指针宽度：ctypes 默认按 32 位 int 返回，
+            # 64 位下会截断 HWND，导致前台窗口/句柄相等比较出错
+            user32.FindWindowW.argtypes = [wt.LPCWSTR, wt.LPCWSTR]
+            user32.FindWindowW.restype = wt.HWND
+            user32.GetForegroundWindow.restype = wt.HWND
+            user32.GetAncestor.argtypes = [wt.HWND, ctypes.c_uint]
+            user32.GetAncestor.restype = wt.HWND
+            user32.IsWindow.argtypes = [wt.HWND]
+            user32.IsWindow.restype = wt.BOOL
+            user32.IsWindowVisible.argtypes = [wt.HWND]
+            user32.IsWindowVisible.restype = wt.BOOL
+            user32.GetWindowRect.argtypes = [wt.HWND, ctypes.POINTER(wt.RECT)]
+            user32.GetWindowRect.restype = wt.BOOL
+            # 装钩子时先解析一次主窗口句柄，后台滚轮即可零 FindWindow 直接放行
+            self._hwnd = int(user32.FindWindowW(None, _WINDOW_TITLE) or 0)
             # 低级钩子的回调位于当前进程代码中：hMod 必须传 NULL（传 exe 句柄会失败）
             self._hook = user32.SetWindowsHookExW(WH_MOUSE_LL, self._proc, None, 0)
         except Exception:  # noqa: BLE001
@@ -140,27 +159,53 @@ class WheelBridge:
                 pass
         return ctypes.windll.user32.CallNextHookEx(self._hook, n_code, wparam, lparam)
 
+    def _main_hwnd(self, user32) -> int:
+        """主窗口句柄（缓存）：窗口被重建导致缓存句柄失效时，才按标题重新查找。"""
+        hwnd = self._hwnd
+        if hwnd and user32.IsWindow(hwnd):
+            return hwnd
+        self._hwnd = int(user32.FindWindowW(None, _WINDOW_TITLE) or 0)
+        return self._hwnd
+
+    @staticmethod
+    def _foreground_is_ours(user32, hwnd: int) -> bool:
+        """前台窗口是否属于本程序。
+
+        GetForegroundWindow 可能返回本程序的下拉菜单/对话框等子窗口或被拥有
+        窗口，而非主窗口本身，因此取其顶层根窗口（GetAncestor, GA_ROOT=2）再与
+        主窗口比较；其他程序的根窗口必然不等于本程序句柄。"""
+        fg = user32.GetForegroundWindow()
+        if not fg:
+            return False
+        if fg == hwnd:
+            return True
+        root = user32.GetAncestor(fg, 2)  # GA_ROOT
+        return bool(root) and root == hwnd
+
     def _inside_window(self, pt: wt.POINT) -> bool:
-        """滚轮是否应交给本程序：主窗口可见、且为当前前台窗口、且光标落在其
-        物理边界内，三者同时满足才成立。
+        """滚轮是否应交给本程序：主窗口可见、前台窗口属于本程序、光标落在其
+        物理边界内，三者同时满足才成立；任一不满足都返回 False（调用方透传）。
 
-        必须额外校验前台窗口：WH_MOUSE_LL 是全局钩子，若只判断“光标在窗口矩形
-        内 + 窗口可见”，当本程序处于后台（被别的窗口盖住或未聚焦）而光标恰好
-        位于其矩形上方滚动时，钩子会吞掉本该给前台程序的滚轮，表现为后台程序
-        占用滚轮。因此只有本程序在前台时才接管/吞掉滚轮，其余一律透传。
+        非前台绝不接管滚轮：WH_MOUSE_LL 是全局钩子，后台时若吞掉或拖慢滚轮
+        回调，会表现为后台程序占用前台程序的滚轮；低级钩子回调一旦超过
+        LowLevelHooksTimeout 还会被系统直接丢弃事件。因此把最便宜的“可见 +
+        前台”判定放在最前，本程序在后台时只做轻量系统调用立即放行，绝不进行
+        FindWindow 枚举（句柄已缓存）与 DWM 几何查询。
 
-        低级钩子回调的坐标为物理像素，而本进程默认 DPI 感知下 GetWindowRect
-        返回虚拟化坐标，在缩放显示器（125%/150%/175%…）上二者不一致会导致
-        误判、桥接完全失效。改用 DwmGetWindowAttribute 取物理像素窗口边界
-        （该 API 不受调用进程 DPI 感知影响），与钩子坐标同单位后再比较。
+        命中测试坐标为物理像素，而本进程默认 DPI 感知下 GetWindowRect 返回
+        虚拟化坐标，缩放显示器（125%/150%/175%…）上会误判；故用
+        DwmGetWindowAttribute 取物理边界（DWMWA_EXTENDED_FRAME_BOUNDS=9，
+        不受调用进程 DPI 感知影响），失败再回退 GetWindowRect。
         """
         try:
             user32 = ctypes.windll.user32
-            hwnd = user32.FindWindowW(None, "CSearch - 极速文件搜索")
-            if not hwnd or not user32.IsWindowVisible(hwnd):
+            hwnd = self._main_hwnd(user32)
+            if not hwnd:
                 return False
-            # 非前台窗口不接管滚轮：避免后台时劫持其他程序的滚动（吞事件在 _callback）
-            if user32.GetForegroundWindow() != hwnd:
+            if not user32.IsWindowVisible(hwnd):
+                return False
+            # 关键闸门：非前台立即透传，后续几何查询一律不做（零额外开销）
+            if not self._foreground_is_ours(user32, hwnd):
                 return False
             rect = wt.RECT()
             try:
