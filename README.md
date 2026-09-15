@@ -48,20 +48,37 @@ C:\Softwares\Python-V3.12.10.x64\python.exe main.py               # 或 python m
    `Esc` 清空，`F5` 刷新，`Ctrl+D` 复制路径，`Ctrl+E` 定位，`Ctrl+A` 全选。
 8. 窗口状态记忆：自动保存/恢复尺寸位置。
 
-## 架构（v2 重构）
+## 架构（v3 重构，Python 3.12+ / Flet 1.0.0）
 
 ```
-main.py                  入口：窗口配置 + 事件注册 + 渲染
+main.py                  极简入口（委托 bootstrap.run）
+app.py                   独立介绍站点（Flet 1.0.0，flet run app.py）
 csearch/
-├── types.py             类型与常量（ResultItem / Bookmark / 排序常量 / 过滤器选项）
+├── constants.py         常量 / 过滤器选项 / 排序码 / 列宽 / Focus·DialogKind 枚举
+├── models.py            数据模型（ResultItem / SearchOutcome / Bookmark / 配置 dataclass）
 ├── engine.py            Everything SDK 封装（分页查询 / 排序 / 看门狗 / 索引监听）
 ├── ops.py               文件操作（打开 / 定位 / 复制 / 删除 / 启动 Everything）
-├── store.py             配置与书签 JSON 持久化（函数式）
-├── tray_manager.py      系统托盘（pystray）+ 全局热键（pynput）独立模块（守护子线程，线程安全）
+├── store.py             配置与书签 JSON 持久化（容错读取 + 原子写入）
+├── history.py           运行历史（SQLModel / SQLite）
+├── tray_manager.py      系统托盘（pystray）+ 全局热键（pynput），守护子线程、线程安全
+├── wheel_bridge.py      WH_MOUSE_LL 滚轮桥（部分客户端滚轮失效兜底）
 ├── services.py          跨线程事件桥（后台线程 → asyncio 主循环）
-├── logic.py             业务编排（搜索 / 动作 / 书签 / 设置 / 事件分发）
-├── state.py             应用状态（@ft.observable 数据类）+ 服务单例
-└── ui/                  声明式组件：app / searchbar / bookmarks / results / statusbar / dialogs / icons
+├── state.py             应用状态（@ft.observable 数据类）+ 长生命周期服务容器
+├── bootstrap.py         启动装配：页面/窗口配置、全局事件接线、渲染根组件
+├── platform/win32.py    Win32 底层能力（修饰键 / 光标 / 多屏几何 / 窗口置前，统一容错）
+├── controller/          业务控制器（原 logic.py 按职责拆分，门面统一导出）
+│   ├── common.py        页面对象 / 轻提示 / 选中项 / 焦点切换
+│   ├── search.py        防抖搜索 / 分页 / 增量加载 / 静默刷新 / 排序过滤正则 / 滚动
+│   ├── selection.py     单击多选 / 双击 / 键盘移动选中
+│   ├── actions.py       文件动作与运行次数
+│   ├── bookmarks.py     书签保存 / 应用 / 改名 / 删除
+│   ├── settings.py      全局热键 / 自定义大小
+│   ├── columns.py       列宽拖拽（双通道）与缩放自适应
+│   ├── window.py        托盘显隐 / 几何记忆 / 窗口事件 / 退出
+│   ├── keyboard.py      页面级快捷键分发
+│   └── session.py       服务装配初始化 + 后台桥事件循环
+└── ui/                  声明式组件 + theme.py 设计令牌（颜色/间距/边框单一来源）
+    └── app / searchbar / results / bookmarks / statusbar / dialogs / sidebar / icons
 ```
 
 设计要点：

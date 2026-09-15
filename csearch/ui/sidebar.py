@@ -1,109 +1,119 @@
-"""侧边栏：分类过滤 + 时间/大小筛选 + 书签管理（与关键词叠加生效）。"""
+"""左侧导航栏组件（保留备用：当前主界面采用单列布局，未挂载本组件）。"""
 
 from __future__ import annotations
 
+import asyncio
+
 import flet as ft
 
-from csearch import logic
+from csearch.controller import (
+    on_filter,
+    on_sort,
+    open_bookmark,
+    open_hotkey,
+    quit_app,
+    toggle_window,
+)
 from csearch.state import AppState
-from csearch.types import CATEGORIES, SIZE_RANGES, TIME_RANGES
-from csearch.ui.icons import CATEGORY_ICONS
-
-_ACTIVE_BG, _ACTIVE_FG = "#E8F0FE", "#1A73E8"
+from csearch.ui.theme import C, sym_padding
 
 
-def _category_row(state: AppState, key: str, label: str) -> ft.Control:
-    active = state.category == key
+def _nav_item(icon: str, label: str, active: bool, on_click) -> ft.Control:
     return ft.Container(
-        padding=ft.Padding(8, 6, 8, 6),
-        border_radius=ft.BorderRadius(6, 6, 6, 6),
-        bgcolor=_ACTIVE_BG if active else None,
-        on_click=lambda e: logic.on_filter(state, "category", key),
+        border_radius=8,
+        padding=sym_padding(8, 6),
+        bgcolor=C.PRIMARY_CONTAINER if active else None,
         content=ft.Row(
-            spacing=8,
+            spacing=10,
             controls=[
-                ft.Icon(CATEGORY_ICONS[key], size=16, color=_ACTIVE_FG if active else "#5F6368"),
-                ft.Text(label, size=13, color=_ACTIVE_FG if active else "#3C4043",
-                        weight=ft.FontWeight.W_500 if active else None),
-            ],
-        ),
-    )
-
-
-def _bookmark_row(state: AppState, bm) -> ft.Control:
-    return ft.Container(
-        padding=ft.Padding(8, 5, 4, 5),
-        border_radius=ft.BorderRadius(6, 6, 6, 6),
-        on_click=lambda e: logic.apply_bookmark(state, bm),
-        content=ft.Row(
-            spacing=6,
-            controls=[
-                ft.Icon(ft.Icons.BOOKMARK_BORDER, size=14, color="#F9AB00"),
-                ft.Text(bm.name, size=12, color="#3C4043", expand=True,
-                        overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                ft.PopupMenuButton(
-                    icon=ft.Icons.MORE_VERT,
-                    icon_size=16,
-                    icon_color="#9AA0A6",
-                    items=[
-                        ft.PopupMenuItem(content="重命名", icon=ft.Icons.EDIT,
-                                         on_click=lambda e: logic.rename_bookmark(state, bm)),
-                        ft.PopupMenuItem(content="删除", icon=ft.Icons.DELETE_OUTLINE,
-                                         on_click=lambda e: logic.delete_bookmark(state, bm)),
-                    ],
+                ft.Icon(
+                    icon, size=18,
+                    color=C.PRIMARY if active else C.TEXT_SUB,
+                ),
+                ft.Text(
+                    label, size=13,
+                    weight=ft.FontWeight.W_600 if active else ft.FontWeight.W_400,
+                    color=C.PRIMARY if active else C.TEXT_STRONG,
                 ),
             ],
         ),
+        on_click=on_click,
+        ink=True,
+    )
+
+
+def _section_label(text: str) -> ft.Control:
+    return ft.Container(
+        padding=ft.Padding(8, 6, 8, 2),
+        content=ft.Text(text, size=11, color=C.TEXT_HINT,
+                        weight=ft.FontWeight.W_600),
     )
 
 
 @ft.component
 def Sidebar(state: AppState):
     return ft.Container(
-        width=232,
-        bgcolor="#FAFBFC",
-        padding=ft.Padding(10, 12, 10, 12),
-        border=ft.Border(right=ft.BorderSide(1, "#E4E7ED")),
+        width=200,
+        bgcolor=C.SIDEBAR_BG,
+        border=ft.Border(right=ft.BorderSide(1, C.BORDER)),
+        padding=ft.Padding(8, 12, 8, 12),
         content=ft.Column(
-            spacing=0,
-            scroll=ft.ScrollMode.AUTO,
+            spacing=2,
             controls=[
-                ft.Text("分类", size=11, color="#9AA0A6", weight=ft.FontWeight.W_600),
-                ft.Container(height=4),
-                *[_category_row(state, k, v) for k, v in CATEGORIES],
-                ft.Container(height=10),
-                ft.Text("修改时间", size=11, color="#9AA0A6", weight=ft.FontWeight.W_600),
-                ft.Container(height=4),
-                ft.Dropdown(
-                    value=state.time_range, dense=True, text_size=13,
-                    options=[ft.DropdownOption(key=k, text=v) for k, v in TIME_RANGES],
-                    on_select=lambda e: logic.on_filter(state, "time", e.control.value),
-                ),
-                ft.Container(height=10),
-                ft.Text("文件大小", size=11, color="#9AA0A6", weight=ft.FontWeight.W_600),
-                ft.Container(height=4),
-                ft.Dropdown(
-                    value=state.size_range, dense=True, text_size=13,
-                    options=[ft.DropdownOption(key=k, text=v) for k, v in SIZE_RANGES],
-                    on_select=lambda e: logic.on_filter(state, "size", e.control.value),
-                ),
-                ft.Container(height=12),
                 ft.Row(
-                    spacing=4,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=8,
                     controls=[
-                        ft.Text("书签", size=11, color="#9AA0A6", weight=ft.FontWeight.W_600, expand=True),
-                        ft.IconButton(
-                            ft.Icons.BOOKMARK_ADD, icon_size=16, icon_color="#5F6368",
-                            tooltip="保存当前搜索条件为书签",
-                            on_click=lambda e: logic.open_bookmark(state),
-                        ),
+                        ft.Icon(ft.Icons.SPEED, color=C.PRIMARY, size=22),
+                        ft.Text("CSearch", size=16, weight=ft.FontWeight.W_700),
                     ],
                 ),
-                ft.Container(height=2),
-                *[_bookmark_row(state, bm) for bm in state.bookmarks],
-                ft.Container(height=6),
-                ft.Text("右键结果行可执行打开/定位/复制/删除", size=10, color="#BDC1C6"),
+                ft.Container(height=8),
+                _section_label("排序"),
+                _nav_item(
+                    ft.Icons.SORT_BY_ALPHA, "按名称", state.sort_col == "name",
+                    lambda e: on_sort(state, "name"),
+                ),
+                _nav_item(
+                    ft.Icons.FOLDER_OUTLINED, "按路径", state.sort_col == "path",
+                    lambda e: on_sort(state, "path"),
+                ),
+                _nav_item(
+                    ft.Icons.SD_STORAGE, "按大小", state.sort_col == "size",
+                    lambda e: on_sort(state, "size"),
+                ),
+                _nav_item(
+                    ft.Icons.ACCESS_TIME, "按时间", state.sort_col == "mtime",
+                    lambda e: on_sort(state, "mtime"),
+                ),
+                ft.Container(height=8),
+                _section_label("筛选"),
+                _nav_item(
+                    ft.Icons.FOLDER_SPECIAL, "仅文件夹",
+                    state.category == "folder",
+                    lambda e: on_filter(
+                        state, "category",
+                        "all" if state.category == "folder" else "folder",
+                    ),
+                ),
+                ft.Container(expand=True),
+                _nav_item(
+                    ft.Icons.BOOKMARK_ADD, "保存书签", False,
+                    lambda e: open_bookmark(state),
+                ),
+                _nav_item(
+                    ft.Icons.KEYBOARD, "全局热键", False,
+                    lambda e: open_hotkey(state),
+                ),
+                _nav_item(
+                    ft.Icons.MINIMIZE, "最小化到托盘", False,
+                    lambda e: asyncio.create_task(toggle_window(state)),
+                ),
+                _nav_item(
+                    ft.Icons.POWER_SETTINGS_NEW, "退出", False,
+                    lambda e: asyncio.create_task(quit_app(state)),
+                ),
+                ft.Container(height=4),
+                ft.Text("↑↓ 选择 · Enter 打开", size=10, color=C.TEXT_FAINT),
             ],
         ),
     )

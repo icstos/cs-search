@@ -1,8 +1,4 @@
-"""结果列表：可排序表头（列宽可拖拽）+ 交替行背景 + 类型图标 + 右键菜单 + 懒加载 + 键盘导航。
-
-列宽对齐：表头与行统一从 state.col_widths 读取像素宽度，均从 x=0 起无内边距；
-对齐规则：名称/路径左对齐，大小右对齐，修改时间居中。
-"""
+"""结果列表：表头（可拖拽列宽 / 点击排序）+ 虚拟 ListView + 右键菜单 + 空态。"""
 
 from __future__ import annotations
 
@@ -10,272 +6,332 @@ import asyncio
 
 import flet as ft
 
-from csearch import logic
+from csearch.constants import COLUMNS, DEFAULT_COL_WIDTHS, ROW_HEIGHT
+from csearch.controller import (
+    copy_names,
+    copy_paths,
+    delete_selected,
+    end_col_drag_gesture,
+    ensure_selected,
+    launch_everything,
+    load_more,
+    no_more_to_load,
+    on_row_click,
+    on_sort,
+    open_folder,
+    open_selected,
+    request_run_count,
+    reveal_selected,
+    start_col_drag,
+    start_col_drag_gesture,
+    update_col_drag_gesture,
+)
+from csearch.models import ResultItem
 from csearch.state import AppState, services
-from csearch.types import ResultItem
 from csearch.ui.bookmarks import BookmarksPanel
 from csearch.ui.icons import icon_for
+from csearch.ui.theme import ALIGNMENT, TEXT_ALIGN, C, sym_padding
 
-_BORDER, _HEADER_BG, _ROW_H = "#E4E7ED", "#F1F3F4", 30
-# (列名, 标题, 对齐: -1 左 / 0 中 / 1 右)
-# (列名, 标题, 对齐: -1 左 / 0 中 / 1 右)
-# (列名, 标题, 对齐: -1 左 / 0 中 / 1 右)
-_COLUMNS = [("name", "名称", -1), ("path", "路径", -1), ("size", "大小", 1),
-           ("mtime", "修改时间", 0), ("run_count", "次数", 1)]
-_ALIGNMENT = {-1: ft.Alignment(-1, 0), 0: ft.Alignment(0, 0), 1: ft.Alignment(1, 0)}
-_TEXT_ALIGN = {-1: ft.TextAlign.LEFT, 0: ft.TextAlign.CENTER, 1: ft.TextAlign.RIGHT}
+# 结果 ListView 引用（controller 程序化滚动用），组件注册
+services.results_list = ft.Ref[ft.ListView]()
 
 
+# --------------------------------------------------------------------- 单行
 @ft.component
-def Results(state: AppState):
-    lv_ref = ft.use_ref(ft.ListView)
-    menu_ref = ft.use_ref(None)  # 共享右键菜单 Ref（挂载后由框架赋值）
-    # 滚轮桥/键盘翻页需要程序化滚动：把列表 Ref 注册到 services 供 logic 使用
-    services.results_list_ref = lv_ref
-
-    # 共享右键菜单：所有行共用一个 ContextMenu（右键时记录目标行再打开），
-    # 避免每行内联 8 个菜单项（200 行 → 1600+ 控件）拖慢结果渲染
-    def _act(fn):
-        def _h(e):
-            idx = services.menu_row
-            if idx >= 0:
-                logic.ensure_selected(state, idx)
-            result = fn(state)  # fn 可能是同步或异步（打开/复制/删除等）
-            if asyncio.iscoroutine(result):
-                asyncio.create_task(result)
-
-        return _h
-
-    def _run_count(e):
-        idx = services.menu_row
-        if idx >= 0:
-            logic.ensure_selected(state, idx)
-            logic.request_run_count(state, idx)
-
-    menu = [
-        ft.PopupMenuItem(content="打开", icon=ft.Icons.OPEN_IN_NEW, on_click=_act(logic.open_selected)),
-        ft.PopupMenuItem(content="打开文件所在位置", icon=ft.Icons.FOLDER_OPEN, on_click=_act(logic.reveal_selected)),
-        ft.PopupMenuItem(content="复制完整路径", icon=ft.Icons.CONTENT_COPY, on_click=_act(logic.copy_paths)),
-        ft.PopupMenuItem(content="复制文件名", icon=ft.Icons.CONTENT_PASTE, on_click=_act(logic.copy_names)),
-        ft.PopupMenuItem(content="设置运行次数", icon=ft.Icons.TIMER, on_click=_run_count),
-        ft.PopupMenuItem(),
-        ft.PopupMenuItem(content="删除到回收站", icon=ft.Icons.DELETE_OUTLINE, on_click=_act(logic.delete_selected)),
-    ]
-
-    def _on_row_secondary(index: int, e) -> None:
-        # 右键行（按下即触发，事件携带光标位置）：记录目标行并在光标处打开共享菜单；
-        # 菜单项点击时按目标行执行（菜单项与行解耦，渲染开销极低）
-        services.menu_row = index
-        pos = getattr(e, "global_position", None)
-        asyncio.create_task(_open_menu(pos))
-
-    async def _open_menu(pos) -> None:
-        m = menu_ref.current
-        if m is None:
-            return
-        try:
-            if pos is not None and getattr(pos, "x", None) is not None:
-                await m.open(global_position=ft.Offset(pos.x, pos.y))
-            else:
-                await m.open()
-        except Exception:  # noqa: BLE001
-            pass
-
-    # 行控件缓存：结果集/选中集/行宽快照变化时重建（拖拽中表头每帧跟手，行按快照节流重排）
-    rows = ft.use_memo(
-        lambda: [_row(state, i, item, _on_row_secondary) for i, item in enumerate(state.results)],
-        [state.results, state.selected, state.row_width_snap],
+def _result_row(state: AppState, item: ResultItem, index: int):
+    # 依赖变化才重建：切换选中 / 列宽快照变化（拖拽时低频更新）
+    selected = index in state.selected
+    widths = state.row_width_snap or state.col_widths
+    _, set_w = ft.use_state(0)
+    ft.use_memo(
+        lambda: set_w(lambda w: w + 1),
+        [selected, tuple(sorted(widths.items()))],
     )
 
-    def _on_scroll(e) -> None:
-        # 触底增量加载：滚轮桥 scroll_to 是跳转，scroll_delta 恒为 0，必须按
-        # 像素位置判断（距底部 <150px 时触发）；load_more 内部有并发/上限
-        # 防护，重复触发安全。
-        pixels = float(getattr(e, "pixels", 0) or 0)
-        max_ext = float(getattr(e, "max_scroll_extent", 0) or 0)
-        viewport = float(getattr(e, "viewport_dimension", 0) or 0)
-        # 同步真实滚动位置：滚轮/键盘/拖拽/增量加载后，累计值跟随实际位置，
-        # 保证下一次滚轮从正确位置继续；max_ext 用于滚轮目标夹紧。越界弹动时
-        # pixels 会落到 [0, max_ext] 之外，这里一并夹紧，避免把回弹偏移带进
-        # 下一次滚轮换算。
-        services.wheel_acc = (
-            min(max(pixels, 0.0), max_ext) if max_ext > 0 else max(pixels, 0.0)
-        )
-        state.max_ext = max_ext
-        # 边界弹动抑制：flet 0.86 不暴露 ScrollPhysics，无法直接关闭回弹，
-        # 改为在越界（OVERSCROLL / 越界 pixels）的瞬间跳回边界。顶部永远没有
-        # 更早内容，属硬边界；底部仅当已无更多可增量加载时才是硬边界——尚有
-        # 下一页时不拦截，交给 load_more 自然延展列表。duration=0 瞬时跳回。
-        snap = None
-        if pixels <= -0.5:
-            snap = 0.0
-        elif max_ext > 0 and pixels >= max_ext + 0.5 and logic.no_more_to_load(state):
-            snap = max_ext
-        if snap is not None and lv_ref.current is not None:
-            asyncio.create_task(lv_ref.current.scroll_to(offset=snap, duration=0))
-        if max_ext > 0 and pixels + viewport >= max_ext - 150:
-            asyncio.create_task(logic.load_more(state))
+    def _cells() -> list[ft.Control]:
+        cells: list[ft.Control] = []
+        for col, _title, align in COLUMNS:
+            width = widths.get(col, DEFAULT_COL_WIDTHS.get(col, 100))
+            if col == "name":
+                icon_name, icon_color = icon_for(item.name, item.is_folder)
+                content = ft.Row(
+                    spacing=6,
+                    controls=[
+                        ft.Icon(icon_name, size=16, color=icon_color),
+                        ft.Text(
+                            item.name, size=13,
+                            color=C.ON_PRIMARY if selected else C.TEXT,
+                            no_wrap=True, expand=True,
+                            overflow=ft.TextOverflow.ELLIPSIS,
+                        ),
+                    ],
+                )
+            elif col == "path":
+                content = ft.Text(
+                    item.path, size=12, color=C.TEXT_SUB, no_wrap=True,
+                    overflow=ft.TextOverflow.ELLIPSIS,
+                )
+            elif col == "size":
+                content = ft.Text(item.size_str, size=12, color=C.TEXT_SUB,
+                                  text_align=TEXT_ALIGN[align], no_wrap=True)
+            elif col == "mtime":
+                content = ft.Text(item.date_str, size=12, color=C.TEXT_SUB,
+                                  text_align=TEXT_ALIGN[align], no_wrap=True)
+            else:  # run_count
+                content = ft.Text(
+                    str(item.run_count) if item.run_count else "",
+                    size=12,
+                    color=C.SUCCESS if item.run_count else C.TEXT_FAINT,
+                    weight=ft.FontWeight.W_600 if item.run_count else ft.FontWeight.W_400,
+                    text_align=TEXT_ALIGN[align], no_wrap=True,
+                )
+            cells.append(
+                ft.Container(
+                    width=width,
+                    padding=sym_padding(8, 6),
+                    alignment=ALIGNMENT[align],
+                    content=content,
+                )
+            )
+        return cells
 
-    def _on_list_key(e) -> None:
-        # 已废弃：列表按键统一由页面级 on_keyboard 处理（KeyboardListener 包裹
-        # 会导致 ListView 程序化滚动回弹，见上方注释）
-        pass
-
-    if not state.query.strip():
-        # 搜索框无内容：连表头一并隐藏，仅展示书签面板
-        return BookmarksPanel(state)
-    if not state.results and not state.searching:
-        body = ft.Container(
-            expand=True,
-            alignment=ft.Alignment(0, 0),
-            content=ft.Text(
-                state.engine_msg if not state.engine_ok else "没有匹配的结果",
-                size=13,
-                color="#9AA0A6",
+    return ft.GestureDetector(
+        mouse_cursor=ft.MouseCursor.CLICK,
+        on_tap=lambda e: on_row_click(state, index),
+        on_secondary_tap_down=lambda e: asyncio.create_task(
+            _build_context_menu(state, index, e)
+        ),
+        content=ft.Container(
+            height=ROW_HEIGHT,
+            bgcolor=C.PRIMARY_CONTAINER if selected else (
+                C.SURFACE_ALT if index % 2 else C.SURFACE
             ),
-        )
-    else:
-        # 注意：不能用 KeyboardListener 包裹 ListView —— flet 0.86 客户端中该包裹
-        # 会使 ListView 的程序化滚动（scroll_to）立即回弹到顶部，滚轮/键盘滚动全部失效。
-        # 列表按键统一走页面级 page.on_keyboard_event（见 logic.on_keyboard）。
-        # 共享右键菜单包裹（secondary_trigger=None 纯监听，不参与输入/焦点）；
-        # ContextMenu 不传递 expand，外层套 Container(expand=True) 保证列表撑满
-        body = ft.Container(
-            expand=True,
-            content=ft.ContextMenu(
-                ref=menu_ref,
-                items=menu,
-                secondary_trigger=None,
-                content=ft.ListView(
-                    ref=lv_ref,
-                    controls=rows,
-                    expand=True,
-                    spacing=0,
-                    padding=ft.Padding(0, 4, 0, 4),
-                    build_controls_on_demand=True,
-                    item_extent=_ROW_H,  # 行高固定：懒加载精确估算滚动范围
-                    scroll=ft.Scrollbar(thumb_visibility=True, track_visibility=True, thickness=10),
-                    on_scroll=_on_scroll,
+            content=ft.Row(spacing=0, controls=_cells()),
+        ),
+    )
+
+
+async def _build_context_menu(state: AppState, index: int, e) -> None:
+    """行右键：先确保目标行选中，再在指针处弹出菜单。"""
+    ensure_selected(state, index)
+    services.menu_row = index
+    menu = ft.ContextMenu(
+        [
+            ft.MenuItemButton(
+                content=ft.Text("打开 (Enter)"),
+                on_click=lambda _: asyncio.create_task(open_selected(state)),
+            ),
+            ft.MenuItemButton(
+                content=ft.Text("打开所在文件夹 (Ctrl+E)"),
+                on_click=lambda _: asyncio.create_task(reveal_selected(state)),
+            ),
+            ft.MenuItemButton(
+                content=ft.Text("打开文件夹（双击路径列）"),
+                on_click=lambda _: asyncio.create_task(
+                    open_folder(state, services.menu_row)
                 ),
             ),
-        )
-
-    return ft.Column(
-        expand=True,
-        spacing=0,
-        controls=[_header(state), body],
-    )
-
-
-def _header(state: AppState) -> ft.Control:
-    cells: list[ft.Control] = []
-    for i, (key, label, align) in enumerate(_COLUMNS):
-        active = state.sort_col == key
-        arrow = ft.Icon(
-            ft.Icons.ARROW_DOWNWARD if state.sort_desc else ft.Icons.ARROW_UPWARD,
-            size=13, color="#1A73E8",
-        ) if active else ft.Container(width=0, height=0)
-        cells.append(ft.Container(
-            width=state.col_widths.get(key, 90),
-            alignment=_ALIGNMENT[align],
-            on_click=lambda e, k=key: logic.on_sort(state, k),
-            content=ft.Row(
-                spacing=2,
-                controls=[
-                    ft.Text(label, size=12, weight=ft.FontWeight.W_600,
-                            color="#1A73E8" if active else "#5F6368"),
-                    arrow,
-                ],
+            ft.MenuItemButton(
+                content=ft.Text("复制完整路径 (Ctrl+D)"),
+                on_click=lambda _: asyncio.create_task(copy_paths(state)),
             ),
-        ))
-        if i < len(_COLUMNS) - 1:
-            cells.append(_separator(state, key))
+            ft.MenuItemButton(
+                content=ft.Text("复制文件名"),
+                on_click=lambda _: asyncio.create_task(copy_names(state)),
+            ),
+            ft.MenuItemButton(
+                content=ft.Text("设置运行次数…"),
+                on_click=lambda _: request_run_count(state, services.menu_row),
+            ),
+            ft.MenuItemButton(
+                content=ft.Text("删除到回收站 (Delete)"),
+                on_click=lambda _: asyncio.create_task(delete_selected(state)),
+            ),
+        ]
+    )
+    try:
+        await menu.open(x=e.global_x, y=e.global_y)
+    except Exception:  # noqa: BLE001
+        pass
 
-    return ft.Container(
-        bgcolor=_HEADER_BG,
-        padding=ft.Padding(8, 6, 8, 6),
-        border=ft.Border(bottom=ft.BorderSide(1, _BORDER)),
-        content=ft.Row(spacing=0, controls=cells),
+
+# --------------------------------------------------------------------- 表头
+def _header_cell(state: AppState, col: str, title: str, width: int) -> ft.Control:
+    active = state.sort_col == col
+    arrow = ""
+    if active:
+        arrow = " ▲" if not state.sort_desc else " ▼"
+    return ft.GestureDetector(
+        on_tap=lambda e: on_sort(state, col),
+        mouse_cursor=ft.MouseCursor.CLICK,
+        content=ft.Container(
+            width=width,
+            padding=sym_padding(8, 6),
+            content=ft.Text(
+                f"{title}{arrow}", size=12,
+                weight=ft.FontWeight.W_600,
+                color=C.PRIMARY if active else C.TEXT_SUB,
+                no_wrap=True,
+            ),
+        ),
     )
 
 
 def _separator(state: AppState, col: str) -> ft.Control:
-    """列宽拖拽分隔条：GestureDetector 水平拖拽事件驱动。"""
+    """列分隔条：外层水平拖拽手势 + 内层按下轮询（双通道兜底）。"""
     active = state.drag_col == col or state.hover_col == col
-    # 双通道：GestureDetector 原生拖拽事件（global_position 计算）+ 内层 Container
-    # on_tap_down 启动 ctypes 轮询兜底（flet 拖拽事件数据不可靠时的保险）
-    return ft.GestureDetector(
-        width=16,
-        height=30,
+    bar = ft.Container(
+        width=10,
+        content=ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            controls=[
+                ft.Container(
+                    width=2,
+                    expand=True,
+                    bgcolor=C.TEXT_HINT if active else C.DIVIDER,
+                )
+            ],
+        ),
+    )
+    inner = ft.GestureDetector(
+        content=bar,
         mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
-        on_horizontal_drag_start=lambda e: logic.start_col_drag_gesture(state, col, e),
-        on_horizontal_drag_update=lambda e: logic.update_col_drag_gesture(state, col, e),
-        on_horizontal_drag_end=lambda e: logic.end_col_drag_gesture(state),
-        on_horizontal_drag_cancel=lambda e: logic.end_col_drag_gesture(state),
-        tooltip="拖拽调整列宽",
-        content=ft.Container(
-            width=16,
-            height=30,
-            alignment=ft.Alignment(0, 0),
-            on_tap_down=lambda e: asyncio.create_task(logic.start_col_drag(state, col)),
-            on_hover=lambda e: _hover_col(state, col, e),
-            content=ft.Container(
-                width=3,
-                height=18,
-                border_radius=ft.BorderRadius(2, 2, 2, 2),
-                bgcolor="#9AA0A6" if active else "#DDE1E6",
-            ),
+        on_tap_down=lambda e: asyncio.create_task(start_col_drag(state, col)),
+    )
+    return ft.GestureDetector(
+        content=inner,
+        on_horizontal_drag_start=lambda e: start_col_drag_gesture(state, col, e),
+        on_horizontal_drag_update=lambda e: update_col_drag_gesture(state, col, e),
+        on_horizontal_drag_end=lambda e: end_col_drag_gesture(state),
+        on_hover=lambda e: setattr(state, "hover_col", col if e.data == "true" else None),
+    )
+
+
+def _table_header(state: AppState) -> ft.Control:
+    cells: list[ft.Control] = []
+    for col, title, _align in COLUMNS:
+        width = state.col_widths.get(col, DEFAULT_COL_WIDTHS.get(col, 100))
+        cells.append(_header_cell(state, col, title, width))
+        cells.append(_separator(state, col))
+    total = sum(
+        state.col_widths.get(c, DEFAULT_COL_WIDTHS.get(c, 100))
+        for c, _, _ in COLUMNS
+    )
+    return ft.Container(
+        height=32,
+        bgcolor=C.HEADER_BG,
+        border=ft.Border(
+            top=ft.BorderSide(1, C.BORDER), bottom=ft.BorderSide(1, C.BORDER)
+        ),
+        content=ft.Row(
+            spacing=0,
+            width=total + 40,
+            controls=cells,
         ),
     )
 
 
-def _hover_col(state: AppState, col: str, e) -> None:
-    state.hover_col = col if getattr(e, "data", "") == "true" else None
-
-
-def _row(state: AppState, index: int, item: ResultItem,
-          on_secondary) -> ft.Control:
-    selected = index in state.selected
-    bg = "#E8F0FE" if selected else ("#FFFFFF" if index % 2 == 0 else "#F6F8FA")
-    icon, color = icon_for(item.name, item.is_folder)
-    widths = state.col_widths
-
-    return ft.GestureDetector(
-        on_secondary_tap_down=lambda e, i=index: on_secondary(i, e),
-        content=ft.Container(
-            height=_ROW_H,
-            bgcolor=bg,
-            on_click=lambda e, i=index: logic.on_row_click(state, i),
-            content=ft.Row(
-                spacing=6,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[
-                    ft.Icon(icon, size=15, color=color),
-                    ft.Text(item.name, size=13,
-                            weight=ft.FontWeight.W_500 if selected else None,
-                            color="#202124" if not selected else "#174EA6",
-                            width=widths.get("name", 260) - 21,  # 预留图标位
-                            overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                    ft.GestureDetector(
-                        width=widths.get("path", 420),
-                        on_tap=lambda e, i=index: logic.on_row_click(state, i),
-                        on_double_tap=lambda e, i=index: asyncio.create_task(logic.open_folder(state, i)),
-                        content=ft.Text(item.path, size=12, color="#5F6368",
-                                        width=widths.get("path", 420),
-                                        text_align=_TEXT_ALIGN[-1],
-                                        overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                    ),
-                    ft.Text(item.size_str, size=12, color="#5F6368",
-                            width=widths.get("size", 90),
-                            text_align=_TEXT_ALIGN[1]),
-                    ft.Text(item.date_str, size=12, color="#5F6368",
-                            width=widths.get("mtime", 140),
-                            text_align=_TEXT_ALIGN[0]),
-                    ft.Text(str(item.run_count) if item.run_count else "", size=12,
-                            color="#188038" if item.run_count else "#BDC1C6",
-                            width=widths.get("run_count", 70),
-                            text_align=_TEXT_ALIGN[1]),
-                ],
-            ),
+# --------------------------------------------------------------------- 空态
+def _engine_down_card(state: AppState) -> ft.Control:
+    return ft.Container(
+        expand=True,
+        alignment=ft.Alignment(0, 0),
+        content=ft.Column(
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=12,
+            controls=[
+                ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=C.DANGER),
+                ft.Text("Everything 服务未运行", size=16, weight=ft.FontWeight.W_600),
+                ft.Text(state.engine_msg or "请启动 Everything 后使用",
+                        size=13, color=C.TEXT_SUB),
+                ft.FilledButton(
+                    "一键启动 Everything",
+                    icon=ft.Icons.PLAY_ARROW,
+                    on_click=lambda e: launch_everything(),
+                ),
+            ],
         ),
+    )
+
+
+def _empty_hint() -> ft.Control:
+    return ft.Container(
+        expand=True,
+        alignment=ft.Alignment(0, 0),
+        content=ft.Column(
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=8,
+            controls=[
+                ft.Icon(ft.Icons.SEARCH_OFF, size=48, color=C.TEXT_HINT),
+                ft.Text("无匹配结果", size=14, color=C.TEXT_HINT),
+            ],
+        ),
+    )
+
+
+# --------------------------------------------------------------------- 列表
+@ft.component
+def Results(state: AppState):
+    def _on_scroll_event(e) -> None:
+        pixels = float(e.pixels or 0)
+        max_ext = float(e.max_scroll_extent or 0)
+        # 持续同步真实滚动位置，滚轮桥据此做绝对偏移
+        services.wheel_acc = pixels
+        state.max_ext = max_ext
+        viewport = float(e.viewport_dimension or 0)
+        # 接近底部自动加载下一页（硬边界处不再触发，避免越界弹动）
+        if (
+            max_ext > 0
+            and not no_more_to_load(state)
+            and pixels + viewport >= max_ext - 120
+        ):
+            asyncio.create_task(load_more(state))
+
+    if not state.engine_ok:
+        return _engine_down_card(state)
+
+    # 搜索框为空：展示书签面板（同时保留空 results，不挂载 ListView，避免旧列表残留）
+    if not state.query.strip():
+        return BookmarksPanel(state)
+
+    rows = [
+        _result_row(state, item, i)
+        for i, item in enumerate(state.results)
+    ]
+    list_view = ft.ListView(
+        ref=services.results_list,
+        controls=rows,
+        spacing=0,
+        padding=ft.Padding(0, 4, 0, 4),
+        on_scroll=_on_scroll_event,
+    )
+
+    return ft.Column(
+        expand=True,
+        spacing=0,
+        controls=[
+            _table_header(state),
+            ft.Container(
+                expand=True,
+                bgcolor=C.SURFACE,
+                content=ft.Stack(
+                    expand=True,
+                    controls=[
+                        ft.Scrollbar(expand=True, content=list_view),
+                        ft.ProgressRing(
+                            width=20, height=20, stroke_width=2,
+                            visible=state.searching,
+                            left=12, top=8,
+                        ),
+                        (
+                            _empty_hint()
+                            if not state.searching and not state.results
+                            else ft.Container()
+                        ),
+                    ],
+                ),
+            ),
+        ],
     )

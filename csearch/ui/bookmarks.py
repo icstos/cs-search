@@ -1,61 +1,93 @@
-"""书签面板：搜索框无内容时展示于结果区，卡片式，点击一键应用。"""
+"""书签面板：搜索框为空时展示，卡片网格，单击应用、更多菜单重命名/删除。"""
 
 from __future__ import annotations
 
+import asyncio
+
 import flet as ft
 
-from csearch import logic
+from csearch.constants import CATEGORIES, SIZE_RANGES, TIME_RANGES
+from csearch.controller import apply_bookmark, delete_bookmark, rename_bookmark
+from csearch.models import Bookmark
 from csearch.state import AppState
-from csearch.types import CATEGORIES, SIZE_RANGES, TIME_RANGES
+from csearch.ui.theme import C, radius_all, sym_padding
 
-_CAT, _TIME, _SIZE = dict(CATEGORIES), dict(TIME_RANGES), dict(SIZE_RANGES)
-
-
-def _summary(bm) -> str:
-    # 仅展示非默认筛选，避免"不限 · 不限"冗余
-    parts = [
-        bm.query or "全部文件",
-        _CAT.get(bm.category, "") if bm.category != "all" else "",
-        _TIME.get(bm.time_range, "") if bm.time_range != "any" else "",
-        _SIZE.get(bm.size_range, "") if bm.size_range != "any" else "",
-    ]
-    return " · ".join(p for p in parts if p)
+_CATEGORY_LABEL = dict(CATEGORIES)
+_TIME_LABEL = dict(TIME_RANGES)
+_SIZE_LABEL = dict(SIZE_RANGES)
 
 
-def _card(state: AppState, bm) -> ft.Control:
-    return ft.Container(
-        border_radius=ft.BorderRadius(10, 10, 10, 10),
-        bgcolor="#FFFFFF",
-        border=ft.Border.all(1, "#E4E7ED"),
-        padding=ft.Padding(12, 10, 6, 10),
-        on_click=lambda e: logic.apply_bookmark(state, bm),
-        content=ft.Row(
-            spacing=8,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                ft.Icon(ft.Icons.BOOKMARK, color="#F9AB00", size=18),
-                ft.Column(
-                    expand=True,
-                    spacing=2,
-                    controls=[
-                        ft.Text(bm.name, size=13, weight=ft.FontWeight.W_600,
-                                color="#202124", overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                        ft.Text(_summary(bm), size=11, color="#5F6368",
-                                overflow=ft.TextOverflow.ELLIPSIS, max_lines=1),
-                    ],
-                ),
-                ft.PopupMenuButton(
-                    icon=ft.Icons.MORE_VERT,
-                    icon_size=16,
-                    icon_color="#9AA0A6",
-                    items=[
-                        ft.PopupMenuItem(content="重命名", icon=ft.Icons.EDIT,
-                                         on_click=lambda e: logic.rename_bookmark(state, bm)),
-                        ft.PopupMenuItem(content="删除", icon=ft.Icons.DELETE_OUTLINE,
-                                         on_click=lambda e: logic.delete_bookmark(state, bm)),
-                    ],
-                ),
-            ],
+def _summary(bm: Bookmark) -> str:
+    """书签条件摘要（一行）。"""
+    parts = [f"关键词「{bm.query}」" if bm.query else "全部文件"]
+    if bm.category != "all":
+        parts.append(_CATEGORY_LABEL.get(bm.category, bm.category))
+    if bm.time_range != "any":
+        parts.append(_TIME_LABEL.get(bm.time_range, bm.time_range))
+    if bm.size_range != "any":
+        parts.append(_SIZE_LABEL.get(bm.size_range, bm.size_range))
+    return " · ".join(parts)
+
+
+async def _card_menu(state: AppState, bm: Bookmark, e) -> None:
+    menu = ft.ContextMenu(
+        [
+            ft.MenuItemButton(
+                content=ft.Text("重命名"),
+                on_click=lambda _: rename_bookmark(state, bm),
+            ),
+            ft.MenuItemButton(
+                content=ft.Text("删除"),
+                on_click=lambda _: delete_bookmark(state, bm),
+            ),
+        ]
+    )
+    try:
+        await menu.open(x=e.global_x, y=e.global_y)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+@ft.component
+def _bookmark_card(state: AppState, bm: Bookmark):
+    return ft.GestureDetector(
+        mouse_cursor=ft.MouseCursor.CLICK,
+        on_tap=lambda e: apply_bookmark(state, bm),
+        on_secondary_tap_down=lambda e: asyncio.create_task(_card_menu(state, bm, e)),
+        content=ft.Container(
+            border=ft.Border.all(1, C.BORDER),
+            border_radius=radius_all(8),
+            bgcolor=C.SURFACE,
+            padding=ft.Padding(12, 10, 6, 10),
+            content=ft.Column(
+                spacing=4,
+                tight=True,
+                controls=[
+                    ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.BOOKMARK, size=16, color=C.WARNING),
+                            ft.Text(
+                                bm.name, size=13, weight=ft.FontWeight.W_600,
+                                color=C.TEXT, expand=True, no_wrap=True,
+                                overflow=ft.TextOverflow.ELLIPSIS,
+                            ),
+                            ft.IconButton(
+                                ft.Icons.MORE_HORIZ,
+                                icon_size=16,
+                                padding=2,
+                                tooltip="重命名 / 删除",
+                                on_click=lambda e: asyncio.create_task(
+                                    _card_menu(state, bm, e)
+                                ),
+                            ),
+                        ],
+                    ),
+                    ft.Text(
+                        _summary(bm), size=11, color=C.TEXT_SUB,
+                        max_lines=2, overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
+                ],
+            ),
         ),
     )
 
@@ -67,20 +99,36 @@ def BookmarksPanel(state: AppState):
             expand=True,
             alignment=ft.Alignment(0, 0),
             content=ft.Column(
-                spacing=8,
+                alignment=ft.MainAxisAlignment.CENTER,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=8,
                 controls=[
-                    ft.Icon(ft.Icons.BOOKMARK_BORDER, size=36, color="#BDC1C6"),
-                    ft.Text("还没有书签", size=14, color="#9AA0A6"),
-                    ft.Text("输入关键词搜索后，点击搜索框右侧的 ☆ 保存当前搜索条件", size=12, color="#BDC1C6"),
+                    ft.Icon(ft.Icons.BOOKMARK_BORDER, size=48, color=C.TEXT_FAINT),
+                    ft.Text("暂无书签", size=14, color=C.TEXT_HINT),
+                    ft.Text(
+                        "设置搜索条件后，点击顶部 ★ 保存为书签",
+                        size=12, color=C.TEXT_HINT,
+                    ),
                 ],
             ),
         )
-    return ft.GridView(
-        controls=[_card(state, bm) for bm in state.bookmarks],
+
+    return ft.Container(
         expand=True,
-        max_extent=260,
-        spacing=12,
-        run_spacing=12,
-        padding=ft.Padding(12, 12, 12, 12),
+        padding=sym_padding(12, 12),
+        content=ft.Column(
+            spacing=8,
+            controls=[
+                ft.Text("我的书签", size=13, weight=ft.FontWeight.W_600,
+                        color=C.TEXT_SUB),
+                ft.GridView(
+                    expand=True,
+                    max_extent=240,
+                    child_aspect_ratio=3.2,
+                    spacing=8,
+                    run_spacing=8,
+                    controls=[_bookmark_card(state, bm) for bm in state.bookmarks],
+                ),
+            ],
+        ),
     )

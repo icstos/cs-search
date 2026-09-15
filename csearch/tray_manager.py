@@ -1,20 +1,20 @@
 """系统托盘（pystray）+ 全局热键（pynput）独立模块。
 
 设计要点：
-- 完全解耦：不 import 任何 csearch 业务模块，通过构造参数注入的回调与主程序通信；
+- 完全解耦：不 import 任何业务模块，通过构造参数注入的回调与主程序通信；
 - 线程安全：托盘消息循环与热键监听均运行在守护子线程，互不阻塞主线程；
-  所有 GUI 控件操作一律由调用方通过线程安全事件桥（queue → asyncio）抛回主线程执行，
-  禁止在回调中直接操作 Flet 控件（见 csearch.logic.bridge_loop）；
-- 跨平台：pystray 支持 Windows / macOS / Linux，pynput 支持三大平台；
-- 退出顺序：stop() 按「停止热键监听 → 销毁托盘实例」执行，主程序随后关闭窗口；
-- 降级处理：图标加载失败用空白图、热键注册失败不影响托盘、托盘启动失败返回 False。
+  所有 GUI 操作由调用方经事件桥抛回主线程执行（见 controller.session.bridge_loop），
+  禁止在回调中直接操作 Flet 控件；
+- 降级处理：图标加载失败用占位图、热键注册失败不影响托盘、托盘启动失败返回 False；
+- 退出顺序：stop() 按「停止热键 → 销毁托盘」执行，幂等可重复调用。
 """
 
 from __future__ import annotations
 
 import os
 import threading
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 # pystray / pynput / Pillow 为可选依赖：导入失败时模块仍可导入，start() 返回 False 降级
 try:
@@ -34,15 +34,13 @@ try:
 except Exception:  # noqa: BLE001
     keyboard = None  # type: ignore[assignment]
 
-# 图标候选路径（按优先级）：assets/icon_windows.ico → assets/icon_widows.ico（兼容拼写）
-# → assets/icon.ico → 程序内生成的空白占位图
-_ICON_CANDIDATES = (
-    "icon_windows.ico",
-    "icon_widows.ico",
-    "icon.ico",
-)
-
+# 托盘图标候选（兼容历史拼写 icon_widows.ico）
+_ICON_CANDIDATES = ("icon_windows.ico", "icon_widows.ico", "icon.ico")
 _CB = Callable[[], None]
+
+# 热键组合 → pynput GlobalHotKeys 语法
+_MOD_ALIASES = {"alt": "<alt>", "ctrl": "<ctrl>", "shift": "<shift>", "win": "<cmd>"}
+_KEY_ALIASES = {"space": "<space>", "enter": "<enter>", "esc": "<esc>", "tab": "<tab>"}
 
 
 def _default_icon_path() -> str | None:
@@ -57,54 +55,53 @@ def _default_icon_path() -> str | None:
 
 
 def _make_placeholder_icon(size: int = 64):
-    """生成空白占位图标（透明底 + 对角圆点），保证无图标文件时托盘仍可用。"""
+    """生成占位图标（透明底 + 对角圆点），保证无图标文件时托盘仍可用。"""
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     r = size // 6
-    draw.ellipse((size // 4 - r, size // 4 - r, size // 4 + r, size // 4 + r), fill=(90, 130, 255, 255))
-    draw.ellipse((size * 3 // 4 - r, size * 3 // 4 - r, size * 3 // 4 + r, size * 3 // 4 + r), fill=(90, 130, 255, 255))
+    draw.ellipse((size // 4 - r, size // 4 - r, size // 4 + r, size // 4 + r),
+                 fill=(90, 130, 255, 255))
+    draw.ellipse((size * 3 // 4 - r, size * 3 // 4 - r, size * 3 // 4 + r, size * 3 // 4 + r),
+                 fill=(90, 130, 255, 255))
     return img
 
 
 def _load_icon(icon_path: str | None):
     """加载托盘图标（PIL.Image）；失败返回占位图，绝不抛异常。"""
-    if Image is not None:
-        if icon_path and os.path.isfile(icon_path):
-            try:
-                return Image.open(icon_path)
-            except Exception:  # noqa: BLE001
-                pass
+    if Image is None:
+        return None
+    if icon_path and os.path.isfile(icon_path):
         try:
-            return _make_placeholder_icon()
+            return Image.open(icon_path)
         except Exception:  # noqa: BLE001
             pass
-    return None
+    try:
+        return _make_placeholder_icon()
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _to_pynput(combo: str) -> str:
     """把 "alt+space" 风格组合串转换为 pynput GlobalHotKeys 语法。"""
-    mods = {"alt": "<alt>", "ctrl": "<ctrl>", "shift": "<shift>", "win": "<cmd>"}
-    keys = {"space": "<space>", "enter": "<enter>", "esc": "<esc>", "tab": "<tab>"}
     out: list[str] = []
     for part in (p.strip().lower() for p in combo.split("+") if p.strip()):
-        out.append(
-            mods.get(
-                part,
-                keys.get(
-                    part,
-                    f"<{part}>" if part.startswith("f") and part[1:].isdigit() else part,
-                ),
-            )
-        )
+        if part in _MOD_ALIASES:
+            token = _MOD_ALIASES[part]
+        elif part in _KEY_ALIASES:
+            token = _KEY_ALIASES[part]
+        elif part.startswith("f") and part[1:].isdigit():
+            token = f"<{part}>"
+        else:
+            token = part
+        out.append(token)
     return "+".join(out)
 
 
 class TrayManager:
     """系统托盘 + 全局热键管理器（守护子线程，线程安全）。
 
-    对外仅暴露 start() / stop() / set_hotkey() / toggle_window() / notify()。
-    所有回调（on_hotkey / on_toggle / on_show / on_hide / on_quit）运行在托盘或热键的守护线程中，
-    调用方必须把 GUI 操作通过线程安全事件桥抛回主线程执行。
+    回调（on_hotkey/on_toggle/on_show/on_hide/on_quit）运行在守护线程中，
+    调用方必须把 GUI 操作经事件桥抛回主线程。
     """
 
     def __init__(
@@ -130,7 +127,6 @@ class TrayManager:
         self._on_quit = on_quit
         self._extra_items = extra_menu_items or []
 
-        # 线程安全：start/stop/set_hotkey 互斥；托盘线程与热键线程均为守护线程
         self._lock = threading.Lock()
         self._started = False
         self._icon: Any = None
@@ -147,7 +143,7 @@ class TrayManager:
                 return False
             self._started = True
 
-        # 1) 热键监听（守护线程，pynput 内部线程）；失败仅记录，不阻断托盘
+        # 1) 热键监听（失败仅记录，不阻断托盘）
         self._start_hotkey()
 
         # 2) 托盘（守护子线程运行 pystray 消息循环）
@@ -159,9 +155,7 @@ class TrayManager:
                 self._build_menu(),
             )
             self._icon = icon
-            self._thread = threading.Thread(
-                target=icon.run, name="tray", daemon=True
-            )
+            self._thread = threading.Thread(target=icon.run, name="tray", daemon=True)
             self._thread.start()
             return True
         except Exception:  # noqa: BLE001 —— 托盘启动失败：清理并降级
@@ -169,14 +163,12 @@ class TrayManager:
             return False
 
     def stop(self) -> None:
-        """停止：先停全局热键监听，再销毁托盘实例（幂等，可重复调用）。"""
+        """停止：先停热键，再销毁托盘（幂等）。"""
         with self._lock:
             if not self._started and self._hotkey is None and self._icon is None:
                 return
             self._started = False
-        # 1) 停止热键监听（先于托盘销毁，符合退出顺序要求）
         self._stop_hotkey()
-        # 2) 销毁托盘实例（pystray 的 stop() 线程安全，可从任意线程调用）
         icon, thread = self._icon, self._thread
         self._icon, self._thread = None, None
         if icon is not None:
@@ -189,7 +181,7 @@ class TrayManager:
 
     # ------------------------------------------------------------ 对外接口
     def set_hotkey(self, combo: str) -> bool:
-        """动态更换全局热键（兼容设置对话框）；空串 = 禁用。返回是否注册成功。"""
+        """动态更换全局热键；空串 = 禁用。返回是否注册成功。"""
         self._hotkey_combo = (combo or "").strip().lower()
         return self._start_hotkey()
 
@@ -203,10 +195,7 @@ class TrayManager:
         if icon is None:
             return
         try:
-            if getattr(icon, "HAS_NOTIFICATION", False):
-                icon.notify(message, title or self._title)
-            elif hasattr(icon, "notify"):
-                icon.notify(message, title or self._title)
+            icon.notify(message, title or self._title)
         except Exception:  # noqa: BLE001
             pass
 
@@ -214,24 +203,21 @@ class TrayManager:
     def _build_menu(self):
         """构造右键菜单。
 
-        - 隐藏的 default 项：pystray 左键单击会触发第一个 default=True 的项
-          （Menu.__call__ 遍历原始 items，不受 visible 影响），用于"单击切换窗口"；
-        - 显示主窗口 / 隐藏主窗口 / 分隔线 / 退出程序 为常规菜单项；
-        - extra_menu_items 追加在"退出程序"之前，方便后续扩展。
+        - 隐藏的 default 项：左键单击触发第一个 default=True 的项（切换窗口）；
+        - 显示/隐藏主窗口、分隔线、退出为常规项；extra 项追加在退出之前。
         """
-        items = [
-            # 左键单击切换窗口（菜单中不可见）
-            MenuItem("", lambda icon, item: self._fire(self._on_toggle), default=True, visible=False),
+        return Menu(
+            MenuItem("", lambda icon, item: self._fire(self._on_toggle),
+                     default=True, visible=False),
             MenuItem("显示主窗口", lambda icon, item: self._fire(self._on_show)),
             MenuItem("隐藏主窗口", lambda icon, item: self._fire(self._on_hide)),
             Menu.SEPARATOR,
             *(self._extra_items or []),
             MenuItem("退出程序", lambda icon, item: self._fire(self._on_quit)),
-        ]
-        return Menu(*items)
+        )
 
     def _fire(self, cb: _CB | None) -> None:
-        """在守护线程中触发回调；异常必须吞掉，避免拖垮托盘/热键线程。"""
+        """在守护线程触发回调；异常吞掉，避免拖垮托盘/热键线程。"""
         if cb is None:
             return
         try:
@@ -246,7 +232,7 @@ class TrayManager:
             return not combo  # 空串 = 主动禁用，视为成功
         try:
             listener = keyboard.GlobalHotKeys(
-                # 热键固定触发 on_hotkey（激活窗口）；未注入时回退到 on_toggle 保持兼容
+                # 固定触发 on_hotkey（激活窗口）；未注入时回退 on_toggle
                 {_to_pynput(combo): lambda: self._fire(self._on_hotkey or self._on_toggle)}
             )
             listener.daemon = True
