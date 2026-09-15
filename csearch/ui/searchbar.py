@@ -109,7 +109,9 @@ def SearchBar(state: AppState):
                     ),
                     expand=True,
                     dense=True,
-                    border=ft.InputBorder.NONE,
+                    # flet 1.0.0 无边框输入框（旧 InputBorder.NONE 已废弃、1.3.0 移除）；
+                    # 单个 NoInputBorder 对默认/聚焦/悬停等全部状态生效，搜索框保持扁平无描边
+                    border=ft.NoInputBorder(),
                     text_size=14,
                     ignore_up_down_keys=True,
                     autofocus=state.focus == "search",
