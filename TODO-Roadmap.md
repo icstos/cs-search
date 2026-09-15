@@ -2,7 +2,7 @@
 参考Everything实现本地文件、内容搜索功能
 ```ini
 # 项目目标
-使用 Python(3.12+) + Flet（0.86.5） 框架 + everytools库，在 Windows 平台复刻 Everything 文件搜索工具。采用声明式 UI 架构，实现原生级极速搜索体验，界面简洁高效，操作顺滑无卡顿。
+使用 Python(3.12+) + Flet（1.0.0） 框架 + everytools库，在 Windows 平台复刻 Everything 文件搜索工具。采用声明式 UI 架构，实现原生级极速搜索体验，界面简洁高效，操作顺滑无卡顿。
 
 ## 技术栈强制约束
 1.  UI 框架：Flet（严格遵循声明式写法，基于控件组合构建界面）

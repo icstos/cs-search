@@ -16,8 +16,11 @@ def _regex_toggle(state: AppState) -> ft.Control:
     on = state.use_regex
     return ft.TextButton(
         content=".*",
-        tooltip=("正则搜索：已开启，点击关闭（按正则匹配文件名）" if on
-                 else r"正则搜索：点击开启（参考 Everything，如 ^report.*\.xlsx$）"),
+        tooltip=(
+            "正则搜索：已开启，点击关闭（按正则匹配文件名）"
+            if on
+            else r"正则搜索：点击开启（参考 Everything，如 ^report.*\.xlsx$）"
+        ),
         style=ft.ButtonStyle(
             color="#1A73E8" if on else "#5F6368",
             bgcolor="#E8F0FE" if on else "#F1F3F4",
@@ -32,7 +35,9 @@ def _regex_toggle(state: AppState) -> ft.Control:
     )
 
 
-def _dropdown(state: AppState, field: str, value: str, options: list[tuple[str, str]], width: int) -> ft.Control:
+def _dropdown(
+    state: AppState, field: str, value: str, options: list[tuple[str, str]], width: int
+) -> ft.Control:
     return ft.Dropdown(
         value=value,
         width=width,
@@ -66,7 +71,11 @@ def SearchBar(state: AppState):
             services._debounce = None
         # 防抖未触发 / 搜索进行中时，先按当前条件落库查询，保证选中基于最新结果
         current = services.engine.build_query(
-            state.query, state.category, state.time_range, state.size_range, state.use_regex
+            state.query,
+            state.category,
+            state.time_range,
+            state.size_range,
+            state.use_regex,
         )
         if state.searching or not state.results or state.last_query != current:
             await logic.run_search(state)
@@ -105,9 +114,14 @@ def SearchBar(state: AppState):
                     ignore_up_down_keys=True,
                     autofocus=state.focus == "search",
                     # 快捷键/托盘唤回窗口：搜索框已有内容全选，输入可直接覆盖旧查询（一次性）
-                    selection=(ft.TextSelection(base_offset=0, extent_offset=len(state.query))
-                               if services.select_on_focus and state.query else None),
-                    key=f"search-{state.focus_epoch}" if state.focus == "search" else "search",
+                    selection=(
+                        ft.TextSelection(base_offset=0, extent_offset=len(state.query))
+                        if services.select_on_focus and state.query
+                        else None
+                    ),
+                    key=f"search-{state.focus_epoch}"
+                    if state.focus == "search"
+                    else "search",
                     on_change=lambda e: logic.on_query_changed(state, e.control.value),
                     on_submit=lambda e: asyncio.create_task(_submit()),
                     on_focus=_on_search_focus,
@@ -126,7 +140,9 @@ def SearchBar(state: AppState):
                     ft.Icons.REFRESH,
                     icon_size=20,
                     tooltip="刷新 (F5)",
-                    on_click=lambda e: asyncio.create_task(logic.run_search(state, keep_selection=True)),
+                    on_click=lambda e: asyncio.create_task(
+                        logic.run_search(state, keep_selection=True)
+                    ),
                 ),
                 ft.IconButton(
                     ft.Icons.SETTINGS,

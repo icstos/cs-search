@@ -5,7 +5,7 @@ description = "CSearch - Everything 1.5 极速文件搜索（Flet 声明式，Wi
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "flet==0.86.5",
+    "flet==1.0.0",
     "everytools>=0.2.2",
     "requests>=2.31",
     "pynput>=1.7",

@@ -103,7 +103,9 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
     sort_val = services.engine.sort_value(state.sort_col, state.sort_desc)
     t0 = time.perf_counter()
     try:
-        outcome = await asyncio.to_thread(services.engine.search, query, sort_val, 0, PAGE_SIZE)
+        outcome = await asyncio.to_thread(
+            services.engine.search, query, sort_val, 0, PAGE_SIZE
+        )
     except EngineUnavailableError as e:
         if state.seq == seq:  # 只处理最新一次搜索的错误，过期搜索静默丢弃
             state.engine_ok, state.engine_msg = False, str(e)
@@ -144,7 +146,7 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
     for i in range(0, len(rows), _RESULT_CHUNK):
         if state.seq != seq:
             return  # 输入已变化：停止填充，由新搜索接手（中间态不落地 UI）
-        state.results = rows[:i + _RESULT_CHUNK]
+        state.results = rows[: i + _RESULT_CHUNK]
         # 让出事件循环并等待 flet 后台调度器完成本片渲染（scheduler 会把
         # 同一迭代内的多次赋值合并，sleep(0) 不够，需给它实际运行窗口），
         # 使键盘/滚轮事件可在批次间优先处理
@@ -189,7 +191,7 @@ async def load_more(state: AppState) -> None:
         for i in range(0, len(outcome.rows), _RESULT_CHUNK):
             if state.seq != seq:
                 return
-            state.results = state.results + outcome.rows[:i + _RESULT_CHUNK]
+            state.results = state.results + outcome.rows[: i + _RESULT_CHUNK]
             await asyncio.sleep(0.02)
     except Exception:  # noqa: BLE001
         pass
@@ -302,7 +304,9 @@ def move_selection(state: AppState, delta: int) -> None:
     asyncio.create_task(scroll_results(state, None, row=nxt))
 
 
-async def scroll_results(state: AppState, delta: int | None = None, *, row: int | None = None) -> None:
+async def scroll_results(
+    state: AppState, delta: int | None = None, *, row: int | None = None
+) -> None:
     """滚动结果列表：delta = 相对像素增量；row = 滚动到指定行（用于键盘导航）。
 
     flet 0.86 桌面客户端部分环境不投递滚轮/拖拽事件到 Flutter，此处统一走
@@ -343,7 +347,9 @@ def _refresh_run_counts(state: AppState, paths: list[str]) -> None:
     changed = False
     for r in state.results:
         if r.full_path in touched:
-            r.run_count = history.get_counts([r.full_path]).get(r.full_path, r.run_count)
+            r.run_count = history.get_counts([r.full_path]).get(
+                r.full_path, r.run_count
+            )
             changed = True
     if changed:
         state.results = list(state.results)  # 整体替换触发重绘
@@ -447,7 +453,10 @@ async def delete_selected(state: AppState) -> None:
             asyncio.create_task(scroll_results(state, None, row=target))
         else:
             state.selected, state.anchor = set(), -1
-    snack(f"已移入回收站 {len(deleted_paths)} 项" + (f"，失败：{errors[0]}" if errors else ""))
+    snack(
+        f"已移入回收站 {len(deleted_paths)} 项"
+        + (f"，失败：{errors[0]}" if errors else "")
+    )
     if deleted_paths:
         asyncio.create_task(run_search(state, keep_selection=True))
 
@@ -463,12 +472,22 @@ def launch_everything() -> None:
 
 # ==================================================================== 书签
 def open_bookmark(state: AppState) -> None:
-    state.bm_edit_id, state.bm_name, state.dialog = None, (state.query.strip() or "全部文件")[:40], "bookmark"
+    state.bm_edit_id, state.bm_name, state.dialog = (
+        None,
+        (state.query.strip() or "全部文件")[:40],
+        "bookmark",
+    )
 
 
 def confirm_bookmark(state: AppState) -> None:
-    store.add_bookmark(state.bookmarks, state.bm_name, state.query,
-                       state.category, state.time_range, state.size_range)
+    store.add_bookmark(
+        state.bookmarks,
+        state.bm_name,
+        state.query,
+        state.category,
+        state.time_range,
+        state.size_range,
+    )
     state.dialog = None
     snack("书签已保存")
 
@@ -563,7 +582,10 @@ def update_col_drag_gesture(state: AppState, col: str, e: Any) -> None:
     gx = getattr(getattr(e, "global_position", None), "dx", None)
     if gx is None:
         return
-    width = max(_MIN_COL.get(col, 60), min(int(services._drag_start + gx - services._drag_origin), 900))
+    width = max(
+        _MIN_COL.get(col, 60),
+        min(int(services._drag_start + gx - services._drag_origin), 900),
+    )
     if width != state.col_widths.get(col):
         state.col_widths = {**state.col_widths, col: width}
 
@@ -602,7 +624,7 @@ def _dpi_scale() -> float:
 async def start_col_drag(state: AppState, col: str) -> None:
     """表头列宽拖拽：按下分隔条后轮询鼠标位置，松开左键结束。
 
-    flet 0.86.5 的 GestureDetector 水平拖拽事件数据不可靠（delta 常为 None，
+    flet 1.0.0 的 GestureDetector 水平拖拽事件数据不可靠（delta 常为 None，
     导致宽度不更新），改用 GetCursorPos 轮询，与 UI 框架无关，稳定可用。
     """
     if state.drag_col is not None:
@@ -614,8 +636,13 @@ async def start_col_drag(state: AppState, col: str) -> None:
     frame = 0
     try:
         while _mouse_down():
-            width = max(_MIN_COL.get(col, 60), min(int(start_w + (_cursor_x() - start_x) / scale), 900))
-            if abs(width - state.col_widths.get(col, 100)) >= 1:  # 1px 灵敏度，避免抖动提交
+            width = max(
+                _MIN_COL.get(col, 60),
+                min(int(start_w + (_cursor_x() - start_x) / scale), 900),
+            )
+            if (
+                abs(width - state.col_widths.get(col, 100)) >= 1
+            ):  # 1px 灵敏度，避免抖动提交
                 state.col_widths = {**state.col_widths, col: width}
             frame += 1
             if frame % 5 == 0:
@@ -632,10 +659,16 @@ def adapt_columns(state: AppState) -> None:
     p = page()
     try:
         total = float(p.window.width or 1040)
-        fixed = (state.col_widths.get("size", 90) + state.col_widths.get("mtime", 140)
-                 + state.col_widths.get("run_count", 70) + 40)
+        fixed = (
+            state.col_widths.get("size", 90)
+            + state.col_widths.get("mtime", 140)
+            + state.col_widths.get("run_count", 70)
+            + 40
+        )
         flexible = max(240.0, total - fixed)
-        ratio = flexible / (state.col_widths.get("name", 260) + state.col_widths.get("path", 420))
+        ratio = flexible / (
+            state.col_widths.get("name", 260) + state.col_widths.get("path", 420)
+        )
         name = max(_MIN_COL["name"], int(state.col_widths.get("name", 260) * ratio))
         path = max(_MIN_COL["path"], int(state.col_widths.get("path", 420) * ratio))
         if (name, path) != (state.col_widths.get("name"), state.col_widths.get("path")):
@@ -663,14 +696,19 @@ def _work_areas() -> list[tuple[int, int, int, int]]:
         user32 = ctypes.windll.user32
 
         @ctypes.WINFUNCTYPE(
-            ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p,
-            ctypes.POINTER(wt.RECT), ctypes.c_void_p,
+            ctypes.c_bool,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.POINTER(wt.RECT),
+            ctypes.c_void_p,
         )
         def _enum(hmon, hdc, lprect, lparam):
             mi = _MonitorInfo()
             mi.cbSize = ctypes.sizeof(_MonitorInfo)
             if user32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
-                areas.append((mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom))
+                areas.append(
+                    (mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom)
+                )
             return True
 
         user32.EnumDisplayMonitors(None, None, _enum, None)
@@ -708,9 +746,16 @@ def _ensure_window_on_screen() -> None:
         _, wl, wtop, wr, wbottom = best
         # 窗口比工作区大时贴边，否则居中；保证标题栏落在屏内
         new_left = wl if width >= wr - wl else wl + (wr - wl - width) // 2
-        new_top = wtop if height >= wbottom - wtop else wtop + (wbottom - wtop - height) // 2
+        new_top = (
+            wtop if height >= wbottom - wtop else wtop + (wbottom - wtop - height) // 2
+        )
         user32.SetWindowPos(
-            hwnd, None, new_left, new_top, 0, 0,
+            hwnd,
+            None,
+            new_left,
+            new_top,
+            0,
+            0,
             0x0001 | 0x0004 | 0x0010,  # SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
         )
     except Exception:  # noqa: BLE001
@@ -900,7 +945,9 @@ async def init_app(state: AppState) -> None:
     # 屏幕外 → 任务栏有程序但界面看不到），此时把窗口移回可见区域。
     asyncio.create_task(_ensure_window_on_screen_later())
     # 滚轮桥：flet 客户端部分环境不投递 WM_MOUSEWHEEL 给 Flutter，用低级钩子兜底
-    services.wheel = WheelBridge(lambda delta: services.bridge.emit("wheel", delta=delta))
+    services.wheel = WheelBridge(
+        lambda delta: services.bridge.emit("wheel", delta=delta)
+    )
     if not services.wheel.start():
         services.wheel = None
     await asyncio.to_thread(history.init_db)
@@ -923,7 +970,9 @@ async def init_app(state: AppState) -> None:
     except Exception:  # noqa: BLE001
         services.tray = None
     if not services.engine.notify_registered:
-        services.engine.start_change_monitor(lambda: services.bridge.emit("index_changed"))
+        services.engine.start_change_monitor(
+            lambda: services.bridge.emit("index_changed")
+        )
     # 支持启动即搜索（环境变量 CSEARCH_QUERY；默认空 = 不搜索，展示书签面板）
     init_query = os.environ.get("CSEARCH_QUERY", "").strip()
     if init_query:

@@ -1,7 +1,7 @@
-# CSearch — Everything 1.5 极速文件搜索（Flet 0.86.5 声明式）
+# CSearch — Everything 1.5 极速文件搜索（Flet 1.0.0 声明式）
 
 在 Windows 10/11 上复刻 Everything 的本地文件搜索体验：毫秒级回显、Everything 原生搜索语法、
-实时索引同步、系统托盘常驻、全局热键唤起。**完全基于 Everything 1.5 + Python 3.12 + Flet 0.86.5。**
+实时索引同步、系统托盘常驻、全局热键唤起。**完全基于 Everything 1.5 + Python 3.12 + Flet 1.0.0。**
 
 ## 快速开始
 
