@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 import time
 
+from csearch.constants import Focus
 from csearch.controller.actions import open_selected
 from csearch.controller.search import scroll_results
-from csearch.constants import Focus
 from csearch.platform import modifier_state
 from csearch.state import AppState
 

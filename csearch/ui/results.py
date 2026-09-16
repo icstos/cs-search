@@ -37,16 +37,11 @@ services.results_list = ft.Ref[ft.ListView]()
 
 
 # --------------------------------------------------------------------- 单行
-@ft.component
-def _result_row(state: AppState, item: ResultItem, index: int):
-    # 依赖变化才重建：切换选中 / 列宽快照变化（拖拽时低频更新）
+def _build_row(state: AppState, item: ResultItem, index: int) -> ft.Control:
+    """构建单行控件（普通函数）。选中态 / 列宽在 Results 的 use_memo 依赖变化时
+    随整批行一起重建，避免在子组件里分散订阅导致父组件漏更新。"""
     selected = index in state.selected
     widths = state.row_width_snap or state.col_widths
-    _, set_w = ft.use_state(0)
-    ft.use_memo(
-        lambda: set_w(lambda w: w + 1),
-        [selected, tuple(sorted(widths.items()))],
-    )
 
     def _cells() -> list[ft.Control]:
         cells: list[ft.Control] = []
@@ -59,31 +54,49 @@ def _result_row(state: AppState, item: ResultItem, index: int):
                     controls=[
                         ft.Icon(icon_name, size=16, color=icon_color),
                         ft.Text(
-                            item.name, size=13,
+                            item.name,
+                            size=13,
                             color=C.ON_PRIMARY if selected else C.TEXT,
-                            no_wrap=True, expand=True,
+                            no_wrap=True,
+                            expand=True,
                             overflow=ft.TextOverflow.ELLIPSIS,
                         ),
                     ],
                 )
             elif col == "path":
                 content = ft.Text(
-                    item.path, size=12, color=C.TEXT_SUB, no_wrap=True,
+                    item.path,
+                    size=12,
+                    color=C.TEXT_SUB,
+                    no_wrap=True,
                     overflow=ft.TextOverflow.ELLIPSIS,
                 )
             elif col == "size":
-                content = ft.Text(item.size_str, size=12, color=C.TEXT_SUB,
-                                  text_align=TEXT_ALIGN[align], no_wrap=True)
+                content = ft.Text(
+                    item.size_str,
+                    size=12,
+                    color=C.TEXT_SUB,
+                    text_align=TEXT_ALIGN[align],
+                    no_wrap=True,
+                )
             elif col == "mtime":
-                content = ft.Text(item.date_str, size=12, color=C.TEXT_SUB,
-                                  text_align=TEXT_ALIGN[align], no_wrap=True)
+                content = ft.Text(
+                    item.date_str,
+                    size=12,
+                    color=C.TEXT_SUB,
+                    text_align=TEXT_ALIGN[align],
+                    no_wrap=True,
+                )
             else:  # run_count
                 content = ft.Text(
                     str(item.run_count) if item.run_count else "",
                     size=12,
                     color=C.SUCCESS if item.run_count else C.TEXT_FAINT,
-                    weight=ft.FontWeight.W_600 if item.run_count else ft.FontWeight.W_400,
-                    text_align=TEXT_ALIGN[align], no_wrap=True,
+                    weight=ft.FontWeight.W_600
+                    if item.run_count
+                    else ft.FontWeight.W_400,
+                    text_align=TEXT_ALIGN[align],
+                    no_wrap=True,
                 )
             cells.append(
                 ft.Container(
@@ -103,9 +116,9 @@ def _result_row(state: AppState, item: ResultItem, index: int):
         ),
         content=ft.Container(
             height=ROW_HEIGHT,
-            bgcolor=C.PRIMARY_CONTAINER if selected else (
-                C.SURFACE_ALT if index % 2 else C.SURFACE
-            ),
+            bgcolor=C.PRIMARY_CONTAINER
+            if selected
+            else (C.SURFACE_ALT if index % 2 else C.SURFACE),
             content=ft.Row(spacing=0, controls=_cells()),
         ),
     )
@@ -168,7 +181,8 @@ def _header_cell(state: AppState, col: str, title: str, width: int) -> ft.Contro
             width=width,
             padding=sym_padding(8, 6),
             content=ft.Text(
-                f"{title}{arrow}", size=12,
+                f"{title}{arrow}",
+                size=12,
                 weight=ft.FontWeight.W_600,
                 color=C.PRIMARY if active else C.TEXT_SUB,
                 no_wrap=True,
@@ -203,7 +217,9 @@ def _separator(state: AppState, col: str) -> ft.Control:
         on_horizontal_drag_start=lambda e: start_col_drag_gesture(state, col, e),
         on_horizontal_drag_update=lambda e: update_col_drag_gesture(state, col, e),
         on_horizontal_drag_end=lambda e: end_col_drag_gesture(state),
-        on_hover=lambda e: setattr(state, "hover_col", col if e.data == "true" else None),
+        on_hover=lambda e: setattr(
+            state, "hover_col", col if e.data == "true" else None
+        ),
     )
 
 
@@ -214,8 +230,7 @@ def _table_header(state: AppState) -> ft.Control:
         cells.append(_header_cell(state, col, title, width))
         cells.append(_separator(state, col))
     total = sum(
-        state.col_widths.get(c, DEFAULT_COL_WIDTHS.get(c, 100))
-        for c, _, _ in COLUMNS
+        state.col_widths.get(c, DEFAULT_COL_WIDTHS.get(c, 100)) for c, _, _ in COLUMNS
     )
     return ft.Container(
         height=32,
@@ -243,8 +258,11 @@ def _engine_down_card(state: AppState) -> ft.Control:
             controls=[
                 ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=C.DANGER),
                 ft.Text("Everything 服务未运行", size=16, weight=ft.FontWeight.W_600),
-                ft.Text(state.engine_msg or "请启动 Everything 后使用",
-                        size=13, color=C.TEXT_SUB),
+                ft.Text(
+                    state.engine_msg or "请启动 Everything 后使用",
+                    size=13,
+                    color=C.TEXT_SUB,
+                ),
                 ft.FilledButton(
                     "一键启动 Everything",
                     icon=ft.Icons.PLAY_ARROW,
@@ -274,6 +292,15 @@ def _empty_hint() -> ft.Control:
 # --------------------------------------------------------------------- 列表
 @ft.component
 def Results(state: AppState):
+    # 关键：行控件在「任何早返回之前」无条件用 use_memo 声明对 state.results /
+    # selected / 列宽快照的依赖。这样组件在空查询（返回书签面板）的首次挂载阶段
+    # 就已订阅 results，之后结果分片落地、选中变化都会触发重渲染；否则首次挂载走
+    # 早返回分支、从未读取 results，切到列表分支后将收不到后续更新（列表冻结）。
+    rows = ft.use_memo(
+        lambda: [_build_row(state, item, i) for i, item in enumerate(state.results)],
+        [state.results, state.selected, state.row_width_snap],
+    )
+
     def _on_scroll_event(e) -> None:
         pixels = float(e.pixels or 0)
         max_ext = float(e.max_scroll_extent or 0)
@@ -292,19 +319,22 @@ def Results(state: AppState):
     if not state.engine_ok:
         return _engine_down_card(state)
 
-    # 搜索框为空：展示书签面板（同时保留空 results，不挂载 ListView，避免旧列表残留）
+    # 搜索框为空：展示书签面板（行 memo 已在上方无条件求值，订阅不丢）
     if not state.query.strip():
         return BookmarksPanel(state)
 
-    rows = [
-        _result_row(state, item, i)
-        for i, item in enumerate(state.results)
-    ]
+    # 注意：ft.Scrollbar 是滚动条「配置对象」而非容器控件，必须通过 ListView 的
+    # scroll= 属性传入；把它当控件包裹 content 会在挂载该分支时使组件 fiber 失效
+    # （表现为结果列表首次渲染后永久冻结、不再随输入更新）。
     list_view = ft.ListView(
         ref=services.results_list,
         controls=rows,
+        expand=True,
         spacing=0,
         padding=ft.Padding(0, 4, 0, 4),
+        item_extent=ROW_HEIGHT,  # 固定行高：懒加载精确估算滚动范围
+        build_controls_on_demand=True,  # 虚拟构建，仅渲染可视行，长列表高性能
+        scroll=ft.Scrollbar(thumb_visibility=True, track_visibility=True, thickness=10),
         on_scroll=_on_scroll_event,
     )
 
@@ -319,11 +349,14 @@ def Results(state: AppState):
                 content=ft.Stack(
                     expand=True,
                     controls=[
-                        ft.Scrollbar(expand=True, content=list_view),
+                        list_view,
                         ft.ProgressRing(
-                            width=20, height=20, stroke_width=2,
+                            width=20,
+                            height=20,
+                            stroke_width=2,
                             visible=state.searching,
-                            left=12, top=8,
+                            left=12,
+                            top=8,
                         ),
                         (
                             _empty_hint()
