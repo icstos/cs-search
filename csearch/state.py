@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import flet as ft
 
-from csearch.constants import DEFAULT_COL_WIDTHS, DialogKind, Focus
+from csearch.constants import DEFAULT_COL_WIDTHS, DialogKind, Focus, MenuKind
 from csearch.engine import SearchEngine
 from csearch.models import Bookmark, ResultItem
 from csearch.services import EventBridge
@@ -65,6 +65,13 @@ class AppState:
     run_count_text: str = "0"
     run_count_path: str = ""
 
+    # ---- 右键菜单覆盖层（页面逻辑坐标；MenuKind 为 None 表示未打开） ----
+    menu_kind: MenuKind | None = None
+    menu_x: float = 0.0
+    menu_y: float = 0.0
+    menu_row: int = -1          # 目标结果行
+    menu_bookmark: str = ""     # 目标书签 id
+
     # ---- 书签 ----
     bookmarks: list[Bookmark] = field(default_factory=list)
 
@@ -94,7 +101,6 @@ class Services:
         self.results_list = None  # ft.Ref[ft.ListView]，由 Results 组件注册
         self.select_on_focus = False  # 唤回窗口时全选搜索框内容（一次性标记）
         self.wheel_acc = 0.0          # 滚轮绝对滚动累计值（on_scroll 持续同步）
-        self.menu_row = -1            # 共享右键菜单的目标行
 
 
 services = Services()

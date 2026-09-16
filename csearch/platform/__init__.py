@@ -2,6 +2,7 @@
 
 from csearch.platform.win32 import (
     cursor_x,
+    double_click_seconds,
     dpi_scale,
     ensure_window_on_screen,
     force_foreground_by_title,
@@ -14,6 +15,7 @@ from csearch.platform.win32 import (
 
 __all__ = [
     "cursor_x",
+    "double_click_seconds",
     "dpi_scale",
     "ensure_window_on_screen",
     "force_foreground_by_title",

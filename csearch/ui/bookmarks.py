@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import flet as ft
 
 from csearch.constants import CATEGORIES, SIZE_RANGES, TIME_RANGES
-from csearch.controller import apply_bookmark, delete_bookmark, rename_bookmark
+from csearch.controller import apply_bookmark, open_bookmark_menu
 from csearch.models import Bookmark
 from csearch.state import AppState
 from csearch.ui.theme import C, radius_all, sym_padding
@@ -29,31 +27,12 @@ def _summary(bm: Bookmark) -> str:
     return " · ".join(parts)
 
 
-async def _card_menu(state: AppState, bm: Bookmark, e) -> None:
-    menu = ft.ContextMenu(
-        [
-            ft.MenuItemButton(
-                content=ft.Text("重命名"),
-                on_click=lambda _: rename_bookmark(state, bm),
-            ),
-            ft.MenuItemButton(
-                content=ft.Text("删除"),
-                on_click=lambda _: delete_bookmark(state, bm),
-            ),
-        ]
-    )
-    try:
-        await menu.open(x=e.global_x, y=e.global_y)
-    except Exception:  # noqa: BLE001
-        pass
-
-
 @ft.component
 def _bookmark_card(state: AppState, bm: Bookmark):
     return ft.GestureDetector(
         mouse_cursor=ft.MouseCursor.CLICK,
         on_tap=lambda e: apply_bookmark(state, bm),
-        on_secondary_tap_down=lambda e: asyncio.create_task(_card_menu(state, bm, e)),
+        on_secondary_tap_down=lambda e: open_bookmark_menu(state, bm, e),
         content=ft.Container(
             border=ft.Border.all(1, C.BORDER),
             border_radius=radius_all(8),
@@ -71,13 +50,18 @@ def _bookmark_card(state: AppState, bm: Bookmark):
                                 color=C.TEXT, expand=True, no_wrap=True,
                                 overflow=ft.TextOverflow.ELLIPSIS,
                             ),
-                            ft.IconButton(
-                                ft.Icons.MORE_HORIZ,
-                                icon_size=16,
-                                padding=2,
-                                tooltip="重命名 / 删除",
-                                on_click=lambda e: asyncio.create_task(
-                                    _card_menu(state, bm, e)
+                            # 用 GestureDetector 而非 IconButton：需要点击坐标来定位
+                            # 覆盖层菜单（IconButton 的 on_click 不携带坐标）
+                            ft.GestureDetector(
+                                mouse_cursor=ft.MouseCursor.CLICK,
+                                on_tap=lambda e: open_bookmark_menu(state, bm, e),
+                                content=ft.Container(
+                                    padding=ft.Padding(4, 4, 4, 4),
+                                    border_radius=radius_all(4),
+                                    tooltip="重命名 / 删除",
+                                    content=ft.Icon(
+                                        ft.Icons.MORE_HORIZ, size=16, color=C.TEXT_SUB
+                                    ),
                                 ),
                             ),
                         ],

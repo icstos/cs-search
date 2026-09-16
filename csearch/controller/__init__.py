@@ -2,7 +2,7 @@
 
 子模块按职责拆分，依赖方向单向向下（无环）：
     common → search → selection/actions/bookmarks/settings/columns/window
-           → keyboard → session
+           → menu → keyboard → session
 本文件仅做 re-export，不含逻辑。
 """
 
@@ -40,6 +40,11 @@ from csearch.controller.common import (
     snack,
 )
 from csearch.controller.keyboard import on_keyboard
+from csearch.controller.menu import (
+    close_menu,
+    open_bookmark_menu,
+    open_row_menu,
+)
 from csearch.controller.search import (
     cancel_pending_debounce,
     load_more,
@@ -75,6 +80,7 @@ __all__ = [
     "best_result_index",
     "bridge_loop",
     "cancel_pending_debounce",
+    "close_menu",
     "confirm_bookmark",
     "confirm_hotkey",
     "confirm_rename",
@@ -101,8 +107,10 @@ __all__ = [
     "on_sort",
     "on_window_event",
     "open_bookmark",
+    "open_bookmark_menu",
     "open_folder",
     "open_hotkey",
+    "open_row_menu",
     "open_selected",
     "page",
     "quit_app",

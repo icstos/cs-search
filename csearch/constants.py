@@ -87,3 +87,15 @@ class DialogKind(StrEnum):
     HOTKEY = "hotkey"
     SIZE = "size"
     RUN_COUNT = "run_count"
+
+
+class MenuKind(StrEnum):
+    """右键菜单覆盖层的目标类型（None = 未打开）。
+
+    Flet 1.0.0 桌面客户端不渲染 ``ft.ContextMenu``，改用根 Stack 自绘覆盖层，
+    因此需要显式记录「菜单作用在谁身上」。
+    """
+
+    RESULT_ROW = "result_row"
+    BOOKMARK = "bookmark"
+

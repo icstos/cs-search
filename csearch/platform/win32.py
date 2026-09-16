@@ -63,6 +63,17 @@ def mouse_down() -> bool:
         return False
 
 
+def double_click_seconds() -> float:
+    """系统双击时间窗（秒），默认 500ms；失败回落到 0.5。
+
+    自行判定双击时必须用它，写死 0.4s 会把「系统认可但稍慢」的双击漏判。
+    """
+    try:
+        return max(0.2, _user32().GetDoubleClickTime() / 1000.0)
+    except Exception:  # noqa: BLE001
+        return 0.5
+
+
 def dpi_scale(logical_width: float | None) -> float:
     """物理窗口宽 / 逻辑宽，用于把物理光标位移换算为逻辑像素。"""
     try:

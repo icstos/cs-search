@@ -8,20 +8,13 @@ import flet as ft
 
 from csearch.constants import COLUMNS, DEFAULT_COL_WIDTHS, ROW_HEIGHT
 from csearch.controller import (
-    copy_names,
-    copy_paths,
-    delete_selected,
     end_col_drag_gesture,
-    ensure_selected,
     launch_everything,
     load_more,
     no_more_to_load,
     on_row_click,
     on_sort,
-    open_folder,
-    open_selected,
-    request_run_count,
-    reveal_selected,
+    open_row_menu,
     start_col_drag,
     start_col_drag_gesture,
     update_col_drag_gesture,
@@ -39,71 +32,84 @@ services.results_list = ft.Ref[ft.ListView]()
 # --------------------------------------------------------------------- 单行
 def _build_row(state: AppState, item: ResultItem, index: int) -> ft.Control:
     """构建单行控件（普通函数）。选中态 / 列宽在 Results 的 use_memo 依赖变化时
-    随整批行一起重建，避免在子组件里分散订阅导致父组件漏更新。"""
+    随整批行一起重建，避免在子组件里分散订阅导致父组件漏更新。
+
+    手势分层（实测结论，改动前请先读）：
+    - 每个单元格各挂一个 GestureDetector —— 内层声明的手势由内层处理，
+      因此单击/双击能拿到「点在哪个列」，路径列才能单独走「打开所在文件夹」；
+    - 外层 GestureDetector 只声明 ``on_secondary_tap_down``（内层未声明，仍会被
+      外层接住）与兜底的 ``on_tap``（行右侧空白区），负责右键菜单与空白区选中；
+    - 同一控件上 ``on_tap`` + ``on_double_tap`` 互斥会拖慢单击响应，故双击在
+      ``on_row_click`` 里用手动时间窗判定。
+    """
     selected = index in state.selected
     widths = state.row_width_snap or state.col_widths
+
+    def _cell_content(col: str, align: int) -> ft.Control:
+        if col == "name":
+            icon_name, icon_color = icon_for(item.name, item.is_folder)
+            return ft.Row(
+                spacing=6,
+                controls=[
+                    ft.Icon(icon_name, size=16, color=icon_color),
+                    ft.Text(
+                        item.name,
+                        size=13,
+                        color=C.ON_PRIMARY if selected else C.TEXT,
+                        no_wrap=True,
+                        expand=True,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
+                ],
+            )
+        if col == "path":
+            return ft.Text(
+                item.path,
+                size=12,
+                color=C.TEXT_SUB,
+                no_wrap=True,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            )
+        if col == "size":
+            return ft.Text(
+                item.size_str,
+                size=12,
+                color=C.TEXT_SUB,
+                text_align=TEXT_ALIGN[align],
+                no_wrap=True,
+            )
+        if col == "mtime":
+            return ft.Text(
+                item.date_str,
+                size=12,
+                color=C.TEXT_SUB,
+                text_align=TEXT_ALIGN[align],
+                no_wrap=True,
+            )
+        return ft.Text(  # run_count
+            str(item.run_count) if item.run_count else "",
+            size=12,
+            color=C.SUCCESS if item.run_count else C.TEXT_FAINT,
+            weight=ft.FontWeight.W_600 if item.run_count else ft.FontWeight.W_400,
+            text_align=TEXT_ALIGN[align],
+            no_wrap=True,
+        )
 
     def _cells() -> list[ft.Control]:
         cells: list[ft.Control] = []
         for col, _title, align in COLUMNS:
             width = widths.get(col, DEFAULT_COL_WIDTHS.get(col, 100))
-            if col == "name":
-                icon_name, icon_color = icon_for(item.name, item.is_folder)
-                content = ft.Row(
-                    spacing=6,
-                    controls=[
-                        ft.Icon(icon_name, size=16, color=icon_color),
-                        ft.Text(
-                            item.name,
-                            size=13,
-                            color=C.ON_PRIMARY if selected else C.TEXT,
-                            no_wrap=True,
-                            expand=True,
-                            overflow=ft.TextOverflow.ELLIPSIS,
-                        ),
-                    ],
-                )
-            elif col == "path":
-                content = ft.Text(
-                    item.path,
-                    size=12,
-                    color=C.TEXT_SUB,
-                    no_wrap=True,
-                    overflow=ft.TextOverflow.ELLIPSIS,
-                )
-            elif col == "size":
-                content = ft.Text(
-                    item.size_str,
-                    size=12,
-                    color=C.TEXT_SUB,
-                    text_align=TEXT_ALIGN[align],
-                    no_wrap=True,
-                )
-            elif col == "mtime":
-                content = ft.Text(
-                    item.date_str,
-                    size=12,
-                    color=C.TEXT_SUB,
-                    text_align=TEXT_ALIGN[align],
-                    no_wrap=True,
-                )
-            else:  # run_count
-                content = ft.Text(
-                    str(item.run_count) if item.run_count else "",
-                    size=12,
-                    color=C.SUCCESS if item.run_count else C.TEXT_FAINT,
-                    weight=ft.FontWeight.W_600
-                    if item.run_count
-                    else ft.FontWeight.W_400,
-                    text_align=TEXT_ALIGN[align],
-                    no_wrap=True,
-                )
+            # 显式宽度：Column/Row 的松约束下不给宽度会收缩到内容尺寸，可点区域随之缩水
             cells.append(
-                ft.Container(
-                    width=width,
-                    padding=sym_padding(8, 6),
-                    alignment=ALIGNMENT[align],
-                    content=content,
+                ft.GestureDetector(
+                    mouse_cursor=ft.MouseCursor.CLICK,
+                    on_tap=lambda e, c=col: on_row_click(state, index, c),
+                    content=ft.Container(
+                        width=width,
+                        padding=sym_padding(8, 6),
+                        alignment=ALIGNMENT[align],
+                        content=_cell_content(col, align),
+                    ),
                 )
             )
         return cells
@@ -111,9 +117,7 @@ def _build_row(state: AppState, item: ResultItem, index: int) -> ft.Control:
     return ft.GestureDetector(
         mouse_cursor=ft.MouseCursor.CLICK,
         on_tap=lambda e: on_row_click(state, index),
-        on_secondary_tap_down=lambda e: asyncio.create_task(
-            _build_context_menu(state, index, e)
-        ),
+        on_secondary_tap_down=lambda e: open_row_menu(state, index, e),
         content=ft.Container(
             height=ROW_HEIGHT,
             bgcolor=C.PRIMARY_CONTAINER
@@ -122,50 +126,6 @@ def _build_row(state: AppState, item: ResultItem, index: int) -> ft.Control:
             content=ft.Row(spacing=0, controls=_cells()),
         ),
     )
-
-
-async def _build_context_menu(state: AppState, index: int, e) -> None:
-    """行右键：先确保目标行选中，再在指针处弹出菜单。"""
-    ensure_selected(state, index)
-    services.menu_row = index
-    menu = ft.ContextMenu(
-        [
-            ft.MenuItemButton(
-                content=ft.Text("打开 (Enter)"),
-                on_click=lambda _: asyncio.create_task(open_selected(state)),
-            ),
-            ft.MenuItemButton(
-                content=ft.Text("打开所在文件夹 (Ctrl+E)"),
-                on_click=lambda _: asyncio.create_task(reveal_selected(state)),
-            ),
-            ft.MenuItemButton(
-                content=ft.Text("打开文件夹（双击路径列）"),
-                on_click=lambda _: asyncio.create_task(
-                    open_folder(state, services.menu_row)
-                ),
-            ),
-            ft.MenuItemButton(
-                content=ft.Text("复制完整路径 (Ctrl+D)"),
-                on_click=lambda _: asyncio.create_task(copy_paths(state)),
-            ),
-            ft.MenuItemButton(
-                content=ft.Text("复制文件名"),
-                on_click=lambda _: asyncio.create_task(copy_names(state)),
-            ),
-            ft.MenuItemButton(
-                content=ft.Text("设置运行次数…"),
-                on_click=lambda _: request_run_count(state, services.menu_row),
-            ),
-            ft.MenuItemButton(
-                content=ft.Text("删除到回收站 (Delete)"),
-                on_click=lambda _: asyncio.create_task(delete_selected(state)),
-            ),
-        ]
-    )
-    try:
-        await menu.open(x=e.global_x, y=e.global_y)
-    except Exception:  # noqa: BLE001
-        pass
 
 
 # --------------------------------------------------------------------- 表头
@@ -338,6 +298,19 @@ def Results(state: AppState):
         on_scroll=_on_scroll_event,
     )
 
+    # 注意：Stack 的子控件只放「此刻真的需要显示的」。
+    # 绝不要写成 `... else ft.Container()` 这种空容器占位 —— 空 Container 在 Stack
+    # 的松约束下会被撑成整个 Stack 大小，而且**是可命中的**（实测由最小复现确认），
+    # 于是它成了盖在结果列表上的一层全尺寸透明遮罩，把行的单击/双击/右键全部吞掉。
+    # 症状极具迷惑性：表头在 Stack 外面，点击排序一切正常，只有结果行毫无反应。
+    overlay: list[ft.Control] = []
+    if state.searching:
+        overlay.append(
+            ft.ProgressRing(width=20, height=20, stroke_width=2, left=12, top=8)
+        )
+    if not state.searching and not state.results:
+        overlay.append(_empty_hint())
+
     return ft.Column(
         expand=True,
         spacing=0,
@@ -346,25 +319,7 @@ def Results(state: AppState):
             ft.Container(
                 expand=True,
                 bgcolor=C.SURFACE,
-                content=ft.Stack(
-                    expand=True,
-                    controls=[
-                        list_view,
-                        ft.ProgressRing(
-                            width=20,
-                            height=20,
-                            stroke_width=2,
-                            visible=state.searching,
-                            left=12,
-                            top=8,
-                        ),
-                        (
-                            _empty_hint()
-                            if not state.searching and not state.results
-                            else ft.Container()
-                        ),
-                    ],
-                ),
+                content=ft.Stack(expand=True, controls=[list_view, *overlay]),
             ),
         ],
     )

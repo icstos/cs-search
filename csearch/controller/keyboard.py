@@ -11,6 +11,7 @@ from csearch.controller.actions import (
     reveal_selected,
 )
 from csearch.controller.common import focus_list, focus_search
+from csearch.controller.menu import close_menu
 from csearch.controller.search import (
     on_query_changed,
     run_search,
@@ -35,6 +36,8 @@ async def on_keyboard(state: AppState | None, e: Any) -> None:
             await reveal_selected(state)
         case (True, "a"):
             state.selected, state.anchor = set(range(len(state.results))), 0
+        case (False, "escape") if state.menu_kind is not None:
+            close_menu(state)  # 右键菜单优先被 Esc 关掉，避免误清空搜索框
         case (False, "escape") if state.focus == Focus.LIST:
             focus_search(state)
         case (False, "escape"):

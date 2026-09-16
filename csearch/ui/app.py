@@ -9,6 +9,7 @@ import flet as ft
 from csearch.controller import bridge_loop, init_app
 from csearch.state import AppState, services
 from csearch.ui.dialogs import dialogs
+from csearch.ui.menu import menu_layer
 from csearch.ui.results import Results
 from csearch.ui.searchbar import SearchBar
 from csearch.ui.statusbar import StatusBar
@@ -32,12 +33,21 @@ def App():
     ft.use_effect(_setup, [], _cleanup)
     dialogs(state)
 
-    return ft.Column(
+    # 根 Stack：内容列 + 右键菜单覆盖层（遮罩/面板按指针坐标绝对定位）。
+    # fit=EXPAND 是必须的：松约束下内容列会按内容收缩，右下的空白区点击会落空。
+    return ft.Stack(
         expand=True,
-        spacing=0,
+        fit=ft.StackFit.EXPAND,
         controls=[
-            SearchBar(state),
-            Results(state),
-            StatusBar(state),
+            ft.Column(
+                expand=True,
+                spacing=0,
+                controls=[
+                    SearchBar(state),
+                    Results(state),
+                    StatusBar(state),
+                ],
+            ),
+            *menu_layer(state),
         ],
     )
