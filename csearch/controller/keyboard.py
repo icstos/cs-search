@@ -13,9 +13,9 @@ from csearch.controller.actions import (
 from csearch.controller.common import focus_list, focus_search
 from csearch.controller.menu import close_menu
 from csearch.controller.search import (
-    on_query_changed,
     run_search,
     scroll_results,
+    set_query,
 )
 from csearch.controller.selection import move_selection
 from csearch.state import AppState
@@ -42,7 +42,7 @@ async def on_keyboard(state: AppState | None, e: Any) -> None:
             focus_search(state)
         case (False, "escape"):
             # 与清空输入框一致：同步清空结果，避免书签/结果切换时重挂载旧列表造成首键卡顿
-            on_query_changed(state, "")
+            set_query(state, "", run=False)
             focus_search(state)
         case (False, "arrowdown") if state.focus == Focus.SEARCH and state.results:
             state.selected, state.anchor = {0}, 0

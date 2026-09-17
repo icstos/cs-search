@@ -77,6 +77,33 @@ async def _debounced(state: AppState) -> None:
         pass
 
 
+def set_query(state: AppState, text: str, *, run: bool = True) -> None:
+    """程序化写入搜索框文本（清空 / 应用书签 / 启动回填的唯一入口）。
+
+    必须走 ``query_set_seq``：搜索框控件被 ``SearchBar`` 用 use_memo 长期持有
+    （为的是让打字期间零属性下发、不打断 IME 组合），因此只有依赖变化才会重建
+    并把新文本下发到客户端。用户输入不走这里，走 ``on_query_changed``。
+    """
+    state.query = text
+    state.query_set = text
+    state.query_set_seq += 1
+    if services.wheel is not None:
+        services.wheel.swallow = bool(text.strip())
+    global _last_input_ts
+    _last_input_ts = time.monotonic()
+    state.seq += 1  # 作废在途搜索
+    cancel_pending_debounce()
+    if not text.strip():
+        # 搜索框无内容：清空结果（结果区展示书签）
+        state.searching, state.results, state.total = False, [], 0
+        state.selected = set()
+        state.last_query = ""
+        services.wheel_acc, state.max_ext = 0.0, 0.0
+        return
+    if run:
+        asyncio.create_task(run_search(state))
+
+
 # --------------------------------------------------------------------- 搜索主流程
 async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
     if not state.engine_ok:

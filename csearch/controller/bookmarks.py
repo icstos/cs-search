@@ -7,7 +7,7 @@ import asyncio
 from csearch import store
 from csearch.constants import DialogKind
 from csearch.controller.common import snack
-from csearch.controller.search import run_search
+from csearch.controller.search import run_search, set_query
 from csearch.models import Bookmark
 from csearch.state import AppState
 
@@ -29,9 +29,14 @@ def confirm_bookmark(state: AppState) -> None:
 
 
 def apply_bookmark(state: AppState, bm: Bookmark) -> None:
-    """一键应用书签：回填搜索条件并查询。"""
-    state.query, state.category = bm.query, bm.category
+    """一键应用书签：回填搜索条件并查询。
+
+    回填搜索框必须走 ``set_query``（程序化写入）：搜索框控件由 use_memo 持有，
+    直接赋 ``state.query`` 不会把它同步到客户端输入框。
+    """
+    state.category = bm.category
     state.time_range, state.size_range = bm.time_range, bm.size_range
+    set_query(state, bm.query, run=False)
     asyncio.create_task(run_search(state))
 
 

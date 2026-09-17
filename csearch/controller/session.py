@@ -7,7 +7,12 @@ import os
 
 from csearch import history, store
 from csearch.constants import APP_TITLE
-from csearch.controller.search import run_search, scroll_results, silent_refresh
+from csearch.controller.search import (
+    run_search,
+    scroll_results,
+    set_query,
+    silent_refresh,
+)
 from csearch.controller.window import (
     ensure_on_screen_later,
     hide_to_tray,
@@ -62,9 +67,7 @@ async def init_app(state: AppState) -> None:
     # 启动即搜索（环境变量 CSEARCH_QUERY；默认空 = 展示书签面板）
     init_query = os.environ.get("CSEARCH_QUERY", "").strip()
     if init_query:
-        state.query = init_query
-        if services.wheel is not None:
-            services.wheel.swallow = True
+        set_query(state, init_query, run=False)  # 程序化回填搜索框
     await run_search(state)
 
 

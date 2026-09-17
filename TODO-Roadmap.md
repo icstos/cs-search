@@ -88,6 +88,7 @@
 ```
 
 # TODO
+- [x] 2026-09-17：修复BUG：搜索框用中文输入法输入时被实时搜索结果更新打断（受控 `TextField` 每次重绘都把滞后的 `state.query` 回写客户端、清空 IME composing region → 改为 `use_memo` 长期持有控件、打字期间属性零下发，程序化写入走 `set_query`）
 - [x] 2026-09-17：修复BUG：关闭键无法关闭程序（`page.on_window_event` 在 flet 1.0 无此字段→改为 `page.window.on_event`；托盘不可用时点 X 降级为真退出）
 - [x] 2026-09-02：快捷键激活界面时，自动选中输入框中的内容
 - [ ] 2026-08-30：滚轮滚动时幅度太小

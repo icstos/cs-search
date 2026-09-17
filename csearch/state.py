@@ -21,6 +21,11 @@ class AppState:
 
     # ---- 搜索条件 ----
     query: str = ""
+    # 程序化写入搜索框文本（清空 / 应用书签 / 启动回填）。搜索框控件由
+    # SearchBar 用 use_memo 长期持有，只有它推进时才会重建并把文本下发客户端；
+    # 用户输入路径走 on_change → state.query，期间绝不下发（见 ui/searchbar.py）。
+    query_set: str = ""
+    query_set_seq: int = 0
     category: str = "all"
     time_range: str = "any"
     size_range: str = "any"
