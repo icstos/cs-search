@@ -38,7 +38,7 @@ async def init_app(state: AppState) -> None:
     state.bookmarks = store.load_bookmarks()
 
     try:
-        services.tray = TrayManager(
+        tray = TrayManager(
             title=APP_TITLE,
             hotkey=store.load_config().hotkey,
             # 热键固定激活窗口并置顶（不切换隐藏）；托盘左键单击才切换
@@ -48,7 +48,8 @@ async def init_app(state: AppState) -> None:
             on_hide=lambda: services.bridge.emit("hide"),
             on_quit=lambda: services.bridge.emit("quit"),
         )
-        services.tray.start()
+        # start() 返回 False = 托盘与热键均不可用：置空后 hide_to_tray 会降级为真退出
+        services.tray = tray if tray.start() else None
     except Exception:  # noqa: BLE001
         services.tray = None
 

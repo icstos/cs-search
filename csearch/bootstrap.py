@@ -62,7 +62,10 @@ async def boot(page: ft.Page) -> None:
         on_keyboard(services.state, e)
     )
     # 窗口事件：关闭→托盘 / 唤回焦点 / 缩放列适配 / 几何记忆
-    page.on_window_event = lambda e: on_window_event(services.state, e)
+    # 注意：flet 1.0 的窗口事件挂在 Window.on_event 上，Page 并没有 on_window_event 字段。
+    # 写成 page.on_window_event 只是个普通属性，flet 永远不读——配合 prevent_close=True
+    # 会表现为「点 X 毫无反应且关不掉」。
+    page.window.on_event = lambda e: on_window_event(services.state, e)
 
     page.render(App)  # 1.0 中 render 为同步挂载
 

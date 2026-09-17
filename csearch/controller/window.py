@@ -38,15 +38,24 @@ async def show_window(state: AppState) -> None:
 
 
 def hide_to_tray(state: AppState) -> None:
-    """隐藏到托盘，首次弹一次气泡提示。"""
+    """隐藏到托盘，首次弹一次气泡提示。
+
+    托盘图标与全局热键都不可用时，隐藏窗口 = 应用变成唤不回来的后台进程；
+    此时降级为真退出，避免「点 X 后既看不见也关不掉」。
+    """
+    tray = services.tray
+    if tray is None or not tray.running:
+        asyncio.create_task(quit_app(state))
+        return
     try:
-        page().window.visible = False
-        page().update()
+        p = page()
+        p.window.visible = False
+        p.update()
     except Exception:  # noqa: BLE001
         pass
-    if not state.balloon_shown and services.tray is not None:
+    if not state.balloon_shown:
         state.balloon_shown = True
-        services.tray.notify("已最小化到系统托盘，全局热键可再次唤起", APP_TITLE)
+        tray.notify("已最小化到系统托盘，全局热键可再次唤起", APP_TITLE)
 
 
 async def toggle_window(state: AppState) -> None:

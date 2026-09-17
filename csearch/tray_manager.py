@@ -180,6 +180,15 @@ class TrayManager:
             thread.join(timeout=3)
 
     # ------------------------------------------------------------ 对外接口
+    @property
+    def running(self) -> bool:
+        """托盘图标或全局热键至少有一项可用（隐藏后能否被唤回的唯一判据）。
+
+        两者都没有时隐藏窗口 = 应用变成唤不回来的后台进程，调用方应改为真退出。
+        """
+        with self._lock:
+            return bool(self._icon is not None or self._hotkey is not None)
+
     def set_hotkey(self, combo: str) -> bool:
         """动态更换全局热键；空串 = 禁用。返回是否注册成功。"""
         self._hotkey_combo = (combo or "").strip().lower()
