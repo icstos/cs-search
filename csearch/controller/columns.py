@@ -8,6 +8,7 @@ None），因此同时保留「手势事件」与「按下后 GetCursorPos 轮�
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 from csearch.constants import DEFAULT_COL_WIDTHS, MAX_COL_WIDTH, MIN_COL_WIDTHS
@@ -18,6 +19,12 @@ from csearch.state import AppState
 # 手势通道的起始状态（轮询通道用局部变量）
 _drag_start = 0
 _drag_origin: float | None = None
+
+# 拖拽轮询帧间隔（秒）与「行重排」的时间预算（秒）。
+# 行重排是整批重建 + 全量 diff，行数上千时一次能到一两百毫秒；这里用上一帧 sleep
+# 的溢出量当作渲染占用的代理指标，超预算就自动降频推快照，避免拖拽把事件循环占满。
+_DRAG_FRAME = 0.012
+_SNAP_LAG_BUDGET = 0.04
 
 
 # --------------------------------------------------------------------- 手势通道
@@ -62,6 +69,7 @@ async def start_col_drag(state: AppState, col: str) -> None:
     logical_width = page().window.width
     scale = dpi_scale(logical_width)
     frame = 0
+    lag = 0.0
     try:
         while mouse_down():
             width = max(
@@ -71,10 +79,13 @@ async def start_col_drag(state: AppState, col: str) -> None:
             if abs(width - state.col_widths.get(col, 100)) >= 1:  # 1px 灵敏度防抖
                 state.col_widths = {**state.col_widths, col: width}
             frame += 1
-            if frame % 5 == 0:
-                # 节流：行控件每 ~60ms 重排一次（表头每帧跟手）
+            if frame % 5 == 0 and lag < _SNAP_LAG_BUDGET:
+                # 行控件快照（表头始终每帧跟手，观感不受影响）
                 state.row_width_snap = dict(state.col_widths)
-            await asyncio.sleep(0.012)
+            t0 = time.perf_counter()
+            await asyncio.sleep(_DRAG_FRAME)
+            # 溢出量 ≈ 上一帧事件循环被渲染占用的时间；越小说明余量越足
+            lag = time.perf_counter() - t0 - _DRAG_FRAME
     finally:
         state.row_width_snap = dict(state.col_widths)  # 松手后行对齐最终宽度
         state.drag_col = None

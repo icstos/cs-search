@@ -25,23 +25,20 @@ from csearch.tray_manager import TrayManager
 from csearch.wheel_bridge import WheelBridge
 
 
-async def init_app(state: AppState) -> None:
-    """组件挂载后的一次性初始化（幂等性由调用方保证）。"""
-    # 延迟校验窗口位置：多显示器布局变化时保存的坐标可能失效
-    asyncio.create_task(ensure_on_screen_later())
+def _start_wheel_bridge() -> None:
+    """滚轮桥（后台线程内调用）。
 
-    # 滚轮桥：部分环境不投递 WM_MOUSEWHEEL 给 Flutter，用低级钩子兜底
-    services.wheel = WheelBridge(lambda d: services.bridge.emit("wheel", delta=d))
-    if not services.wheel.start():
-        services.wheel = None
+    部分环境不把 WM_MOUSEWHEEL 投递给 Flutter，用低级钩子兜底。``start()`` 内部要
+    等钩子安装结果（超时上限 3s），且会去拉 ``FindWindowW``——必须放在线程里，
+    否则窗口刚出现时事件循环会被冻住数秒。
+    """
+    wheel = WheelBridge(lambda d: services.bridge.emit("wheel", delta=d))
+    services.wheel = wheel if wheel.start() else None
 
-    await asyncio.to_thread(history.init_db)
 
-    ok, msg, db = await asyncio.to_thread(services.engine.check_status)
-    state.engine_ok, state.engine_msg, state.index_ready = ok, msg, db
-    state.engine_version = services.engine.version
-    state.bookmarks = store.load_bookmarks()
-
+def _start_tray_and_db() -> None:
+    """托盘 + 全局热键 + 运行历史建表（后台线程内调用，彼此无依赖）。"""
+    history.init_db()
     try:
         tray = TrayManager(
             title=APP_TITLE,
@@ -57,6 +54,24 @@ async def init_app(state: AppState) -> None:
         services.tray = tray if tray.start() else None
     except Exception:  # noqa: BLE001
         services.tray = None
+
+
+async def init_app(state: AppState) -> None:
+    """组件挂载后的一次性初始化（幂等性由调用方保证）。"""
+    # 延迟校验窗口位置：多显示器布局变化时保存的坐标可能失效
+    asyncio.create_task(ensure_on_screen_later())
+
+    # 三件互不依赖的启动工作并发执行：滚轮桥 / 托盘热键+建表 / 引擎状态检测。
+    # 它们各自都可能阻塞若干秒，全部走线程池，事件循环只负责等结果。
+    status, _, _ = await asyncio.gather(
+        asyncio.to_thread(services.engine.check_status),
+        asyncio.to_thread(_start_wheel_bridge),
+        asyncio.to_thread(_start_tray_and_db),
+    )
+    ok, msg, db = status
+    state.engine_ok, state.engine_msg, state.index_ready = ok, msg, db
+    state.engine_version = services.engine.version
+    state.bookmarks = store.load_bookmarks()
 
     # 优先事件驱动通知；官方 1.5 SDK DLL 缺失时降级为 5s 签名轮询
     if not services.engine.notify_registered:
@@ -75,8 +90,6 @@ async def bridge_loop(state: AppState) -> None:
     """后台线程事件 → 主线程 GUI 操作的统一分发循环。"""
     while True:
         ev = await services.bridge.next()
-        if ev is None:
-            continue
         match ev["type"]:
             case "toggle":
                 await toggle_window(state)

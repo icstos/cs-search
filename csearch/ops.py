@@ -6,9 +6,6 @@ import os
 import shutil
 import subprocess
 
-import pyperclip
-from send2trash import send2trash
-
 from csearch.models import ResultItem
 from csearch.platform import raise_new_window, visible_top_windows
 
@@ -48,28 +45,35 @@ def reveal_items(items: list[ResultItem]) -> list[str]:
     return errors
 
 
-def copy_paths(items: list[ResultItem]) -> str | None:
-    """复制完整路径到剪贴板（多选换行拼接）。返回错误信息或 None。"""
+def _copy_to_clipboard(text: str) -> str | None:
+    """写剪贴板（惰性导入 pyperclip）。返回错误信息或 None。"""
     try:
-        pyperclip.copy("\n".join(i.full_path for i in items))
+        import pyperclip
+
+        pyperclip.copy(text)
         return None
     except Exception as e:  # noqa: BLE001
         return str(e)
+
+
+def copy_paths(items: list[ResultItem]) -> str | None:
+    """复制完整路径到剪贴板（多选换行拼接）。返回错误信息或 None。"""
+    return _copy_to_clipboard("\n".join(i.full_path for i in items))
 
 
 def copy_names(items: list[ResultItem]) -> str | None:
     """仅复制文件名到剪贴板。返回错误信息或 None。"""
-    try:
-        pyperclip.copy("\n".join(i.name for i in items))
-        return None
-    except Exception as e:  # noqa: BLE001
-        return str(e)
+    return _copy_to_clipboard("\n".join(i.name for i in items))
 
 
 def delete_to_trash(items: list[ResultItem]) -> tuple[list[str], list[str]]:
     """删除选中项到回收站（无需确认，可恢复）。返回 (成功删除的路径, 错误信息)。"""
     deleted: list[str] = []
     errors: list[str] = []
+    try:
+        from send2trash import send2trash  # 惰性导入（约 60ms）
+    except Exception as e:  # noqa: BLE001
+        return deleted, [f"回收站组件不可用: {e}"]
     for item in items:
         try:
             send2trash(item.full_path)

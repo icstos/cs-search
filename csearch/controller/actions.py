@@ -16,12 +16,16 @@ from csearch.controller.search import run_search, scroll_results
 from csearch.state import AppState
 
 
-def _refresh_run_counts(state: AppState, paths: list[str]) -> None:
-    """打开/设置次数后批量回查并本地更新显示值（单次查询，避免逐行查库）。"""
+async def _refresh_run_counts(state: AppState, paths: list[str]) -> None:
+    """打开/设置次数后批量回查并本地更新显示值（单次查询，避免逐行查库）。
+
+    查库走线程池：SQLite 的 IN 查询虽然只有几毫秒，但它是同步调用，跑在事件循环上
+    会直接顶住界面（表现为「打开文件后短暂无响应」）。
+    """
     touched = {p for p in paths if p}
     if not touched:
         return
-    counts = history.get_counts(list(touched))
+    counts = await asyncio.to_thread(history.get_counts, list(touched))
     changed = False
     for row in state.results:
         if row.full_path in touched:
@@ -40,8 +44,15 @@ def request_run_count(state: AppState, index: int) -> None:
         state.dialog = DialogKind.RUN_COUNT
 
 
+async def _apply_run_count(state: AppState, path: str, count: int) -> None:
+    await asyncio.to_thread(history.set_count, path, count)
+    await _refresh_run_counts(state, [path])
+    state.dialog = None
+    snack(f"已设置运行次数：{count}")
+
+
 def confirm_run_count(state: AppState) -> None:
-    """确认设置运行次数。"""
+    """确认设置运行次数（写库与回查放后台，避免点「确定」时卡一下）。"""
     try:
         count = max(0, int(state.run_count_text.strip() or "0"))
     except ValueError:
@@ -49,10 +60,7 @@ def confirm_run_count(state: AppState) -> None:
         return
     if not state.run_count_path:
         return
-    history.set_count(state.run_count_path, count)
-    _refresh_run_counts(state, [state.run_count_path])
-    state.dialog = None
-    snack(f"已设置运行次数：{count}")
+    asyncio.create_task(_apply_run_count(state, state.run_count_path, count))
 
 
 async def open_selected(state: AppState) -> None:
@@ -66,7 +74,7 @@ async def open_selected(state: AppState) -> None:
         return
     opened = [i.full_path for i in items]
     await asyncio.to_thread(history.increment, opened)
-    _refresh_run_counts(state, opened)
+    await _refresh_run_counts(state, opened)
 
 
 async def reveal_selected(state: AppState) -> None:

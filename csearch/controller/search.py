@@ -25,6 +25,7 @@ from csearch.constants import (
 )
 from csearch.controller.common import focus_list, snack
 from csearch.engine import EngineUnavailableError, SearchTimeoutError
+from csearch.models import SearchOutcome
 from csearch.state import AppState, services
 
 # 单会话任务句柄 / 输入时间戳（应用为单窗口，模块级即可）
@@ -104,6 +105,22 @@ def set_query(state: AppState, text: str, *, run: bool = True) -> None:
         asyncio.create_task(run_search(state))
 
 
+# --------------------------------------------------------------------- 查询
+def _query_page(query: str, sort_val: int, offset: int, count: int) -> SearchOutcome:
+    """一次线程池往返内完成「分页查询 + 运行次数回填」。
+
+    原先 search 与 history.get_counts 各占一次 asyncio.to_thread 往返，界面上表现为
+    结果集到了却还要再等一个来回才落地。合并后只剩一次切换；顺带补上增量加载
+    分页的运行次数（原先只有首页回填，后续页的「次数」列恒为空）。
+    """
+    outcome = services.engine.search(query, sort_val, offset, count)
+    counts = history.get_counts(r.full_path for r in outcome.rows)
+    if counts:
+        for row in outcome.rows:
+            row.run_count = counts.get(row.full_path, 0)
+    return outcome
+
+
 # --------------------------------------------------------------------- 搜索主流程
 async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
     if not state.engine_ok:
@@ -127,7 +144,7 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
     t0 = time.perf_counter()
     try:
         outcome = await asyncio.to_thread(
-            services.engine.search, query, sort_val, 0, PAGE_SIZE
+            _query_page, query, sort_val, 0, PAGE_SIZE
         )
     except EngineUnavailableError as e:
         if state.seq == seq:  # 只处理最新一次搜索的错误
@@ -148,17 +165,6 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
     if state.seq != seq:
         return  # 输入已变化：过期结果静默丢弃
 
-    counts = await asyncio.to_thread(
-        history.get_counts, (r.full_path for r in outcome.rows)
-    )
-    if state.seq != seq:
-        return  # 取运行次数期间输入又变化：同样丢弃
-    for row in outcome.rows:
-        row.run_count = counts.get(row.full_path, 0)
-
-    # 先更新轻量状态（总数/耗时/搜索中立即刷新），再分片落地结果。
-    # 一次性渲染 200 行的同步渲染会阻塞事件循环 50~200ms；分片 + 批间让出，
-    # 结果渐进可见，键盘/滚轮事件在批次间优先处理。
     prev = set(state.selected)
     rows = outcome.rows
     state.total = outcome.total
@@ -198,7 +204,7 @@ async def load_more(state: AppState) -> None:
     seq = state.seq
     try:
         outcome = await asyncio.to_thread(
-            services.engine.search, state.last_query, state.last_sort, loaded, PAGE_SIZE
+            _query_page, state.last_query, state.last_sort, loaded, PAGE_SIZE
         )
         if state.seq != seq:
             return  # 期间查询已变化：丢弃过期分页

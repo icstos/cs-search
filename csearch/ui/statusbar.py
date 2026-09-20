@@ -50,16 +50,23 @@ def _right_color(state: AppState) -> str:
 
 @ft.component
 def StatusBar(state: AppState):
-    return ft.Container(
-        height=28,
-        bgcolor=C.SURFACE,
-        border=top_border(),
-        padding=sym_padding(12, 6),
-        content=ft.Row(
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                ft.Text(_left_text(state), size=12, color=C.TEXT_SUB, expand=True),
-                ft.Text(_right_text(state), size=12, color=_right_color(state)),
-            ],
-        ),
-    )
+    # 状态栏只由这三段派生文案决定外观：直接以它们为依赖做整树记忆化，
+    # 免去「任何 state 字段变化都重建一遍状态栏」的固定开销。
+    left, right, right_color = _left_text(state), _right_text(state), _right_color(state)
+
+    def _build() -> ft.Control:
+        return ft.Container(
+            height=28,
+            bgcolor=C.SURFACE,
+            border=top_border(),
+            padding=sym_padding(12, 6),
+            content=ft.Row(
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Text(left, size=12, color=C.TEXT_SUB, expand=True),
+                    ft.Text(right, size=12, color=right_color),
+                ],
+            ),
+        )
+
+    return ft.use_memo(_build, [left, right, right_color])

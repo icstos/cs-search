@@ -94,6 +94,7 @@ class Services:
 
     - engine/bridge/tray/wheel：后台服务；
     - results_list：结果 ListView 的 Ref（程序化滚动用，由 Results 组件注册）；
+    - state：根组件挂载后写回的当前状态（窗口/键盘事件可能早于挂载到达，故默认 None）；
     - 其余为跨层共享的一次性 UI 运行时标记。
     异步任务句柄由各自的 controller 模块管理，不放在此处。
     """
@@ -103,6 +104,7 @@ class Services:
         self.bridge = EventBridge()
         self.tray: TrayManager | None = None
         self.wheel: WheelBridge | None = None
+        self.state: AppState | None = None  # 根组件挂载时写入（窗口/键盘事件可能更早到达）
         self.results_list = None  # ft.Ref[ft.ListView]，由 Results 组件注册
         self.select_on_focus = False  # 唤回窗口时全选搜索框内容（一次性标记）
         self.wheel_acc = 0.0          # 滚轮绝对滚动累计值（on_scroll 持续同步）

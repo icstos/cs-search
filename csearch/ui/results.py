@@ -1,4 +1,22 @@
-"""结果列表：表头（可拖拽列宽 / 点击排序）+ 虚拟 ListView + 右键菜单 + 空态。"""
+"""结果列表：表头（可拖拽列宽 / 点击排序）+ 虚拟 ListView + 右键菜单 + 空态。
+
+性能设计（这是本文件最需要维护的部分，改前务必先读）：
+
+flet 的 ``Observable`` 通知是**对象级**的——``state`` 上任何字段变化都会让所有引用
+它的组件重排。而 diff（``flet.controls.object_patch``）对列表项**没有同一性短路**：
+``_compare_lists`` 会无条件对每一对元素走一遍 ``_compare_dataclasses``。所以「整批行
+一起重建」是这里的头号性能陷阱——实测 400 行规模下，点一下选中就要 ~105ms。
+
+两层记忆化把它压下去：
+
+1. **行控件缓存**（``_build_rows``）：行的有效输入只有「行号 / 条目 / 运行次数 /
+   是否选中 / 各列宽度」五项，任一不变就复用上一次那个**同一个控件对象**。
+   于是点击选中只新建 2 行，而不是 200 行；
+2. **整树记忆化**（``Results`` 里的第二个 ``use_memo``）：把返回给上层的整棵树缓存住。
+   ``Component.update`` 是以 ``{"_b": <根控件>}`` 形式做 diff 的，这是个**单子字段的
+   dataclass 字段**——会命中 diff 里的同一性短路，于是与结果列表无关的状态变化
+   （hover 列分隔条、max_ext 之类）几乎是零开销。
+"""
 
 from __future__ import annotations
 
@@ -29,10 +47,56 @@ from csearch.ui.theme import ALIGNMENT, TEXT_ALIGN, C, sym_padding
 services.results_list = ft.Ref[ft.ListView]()
 
 
+# --------------------------------------------------------------------- 行控件缓存
+# 键 = (行号, id(条目), 运行次数, 是否选中, 各列宽度)；值 = (条目, 控件)
+# 值里持有条目强引用：既保证 id() 不会被回收后复用，也保证「同一条目」可校验。
+_row_cache: dict[tuple, tuple[ResultItem, ft.Control]] = {}
+
+
+def _widths_key(state: AppState) -> tuple[int, ...]:
+    """当前生效的列宽（拖拽期间用低频快照，松手后对齐最终宽度）。"""
+    widths = state.row_width_snap or state.col_widths
+    return tuple(widths.get(col, DEFAULT_COL_WIDTHS.get(col, 100)) for col, _, _ in COLUMNS)
+
+
+def _clear_row_cache() -> None:
+    """清空行缓存（这些行已不在树上，绝不能在下一次渲染里被复用）。"""
+    if _row_cache:
+        _row_cache.clear()
+
+
+def _build_rows(state: AppState, widths: tuple[int, ...]) -> list[ft.Control]:
+    """构建/复用结果行：只新建输入真正变化的行，其余复用同一控件对象。
+
+    严格淘汰：本次渲染结束后缓存里只剩下**确实在树上**的条目。这样被移出列表的行
+    控件会立刻失去引用，绝不可能被之后某次渲染复用一个已卸载的控件。
+    """
+    selected = state.selected
+    used: dict[tuple, tuple[ResultItem, ft.Control]] = {}
+    rows: list[ft.Control] = []
+
+    for index, item in enumerate(state.results):
+        key = (index, id(item), item.run_count, index in selected, widths)
+        cached = _row_cache.get(key)
+        if cached is not None:
+            used[key] = cached
+            rows.append(cached[1])
+            continue
+        control = _build_row(state, item, index)
+        used[key] = (item, control)
+        rows.append(control)
+
+    _row_cache.clear()
+    _row_cache.update(used)
+    return rows
+
+
 # --------------------------------------------------------------------- 单行
 def _build_row(state: AppState, item: ResultItem, index: int) -> ft.Control:
-    """构建单行控件（普通函数）。选中态 / 列宽在 Results 的 use_memo 依赖变化时
-    随整批行一起重建，避免在子组件里分散订阅导致父组件漏更新。
+    """构建单行控件（普通函数，由 _build_rows 按需调用）。
+
+    选中态 / 列宽的变化通过 _build_rows 的缓存键驱动单行重建，不再整批重建，
+    因此这里可以放心地按「当前状态」直接构建。
 
     手势分层（实测结论，改动前请先读）：
     - 每个单元格各挂一个 GestureDetector —— 内层声明的手势由内层处理，
@@ -252,13 +316,22 @@ def _empty_hint() -> ft.Control:
 # --------------------------------------------------------------------- 列表
 @ft.component
 def Results(state: AppState):
-    # 关键：行控件在「任何早返回之前」无条件用 use_memo 声明对 state.results /
-    # selected / 列宽快照的依赖。这样组件在空查询（返回书签面板）的首次挂载阶段
-    # 就已订阅 results，之后结果分片落地、选中变化都会触发重渲染；否则首次挂载走
-    # 早返回分支、从未读取 results，切到列表分支后将收不到后续更新（列表冻结）。
+    widths_key = _widths_key(state)
+
+    # 关键：行控件在「任何早返回之前」无条件用 use_memo 声明依赖。这样组件在空查询
+    # （返回书签面板）的首次挂载阶段就已订阅结果集，之后结果分片落地、选中变化都会
+    # 触发重渲染；否则首次挂载走早返回分支、从未读取 results，切到列表分支后将收不到
+    # 后续更新（列表冻结）。
     rows = ft.use_memo(
-        lambda: [_build_row(state, item, i) for i, item in enumerate(state.results)],
-        [state.results, state.selected, state.row_width_snap],
+        lambda: _build_rows(state, widths_key),
+        [
+            state.results,
+            state.selected,
+            # 刻意只依赖「生效列宽」这一派生值，而不是 state.col_widths：
+            # 拖拽期间 col_widths 每帧都在变，若直接依赖它就会每帧整批重建所有行。
+            # 生效列宽在拖拽时取低频快照（row_width_snap），松手才对齐最终值。
+            widths_key,
+        ],
     )
 
     def _on_scroll_event(e) -> None:
@@ -276,50 +349,76 @@ def Results(state: AppState):
         ):
             asyncio.create_task(load_more(state))
 
-    if not state.engine_ok:
-        return _engine_down_card(state)
+    empty_query = not state.query.strip()
 
-    # 搜索框为空：展示书签面板（行 memo 已在上方无条件求值，订阅不丢）
-    if not state.query.strip():
-        return BookmarksPanel(state)
+    def _build() -> ft.Control:
+        if not state.engine_ok:
+            _clear_row_cache()
+            return _engine_down_card(state)
 
-    # 注意：ft.Scrollbar 是滚动条「配置对象」而非容器控件，必须通过 ListView 的
-    # scroll= 属性传入；把它当控件包裹 content 会在挂载该分支时使组件 fiber 失效
-    # （表现为结果列表首次渲染后永久冻结、不再随输入更新）。
-    list_view = ft.ListView(
-        ref=services.results_list,
-        controls=rows,
-        expand=True,
-        spacing=0,
-        padding=ft.Padding(0, 4, 0, 4),
-        item_extent=ROW_HEIGHT,  # 固定行高：懒加载精确估算滚动范围
-        build_controls_on_demand=True,  # 虚拟构建，仅渲染可视行，长列表高性能
-        scroll=ft.Scrollbar(thumb_visibility=True, track_visibility=True, thickness=10),
-        on_scroll=_on_scroll_event,
-    )
+        # 搜索框为空：展示书签面板（行 memo 已在上方无条件求值，订阅不丢）
+        if empty_query:
+            _clear_row_cache()
+            return BookmarksPanel(state)
 
-    # 注意：Stack 的子控件只放「此刻真的需要显示的」。
-    # 绝不要写成 `... else ft.Container()` 这种空容器占位 —— 空 Container 在 Stack
-    # 的松约束下会被撑成整个 Stack 大小，而且**是可命中的**（实测由最小复现确认），
-    # 于是它成了盖在结果列表上的一层全尺寸透明遮罩，把行的单击/双击/右键全部吞掉。
-    # 症状极具迷惑性：表头在 Stack 外面，点击排序一切正常，只有结果行毫无反应。
-    overlay: list[ft.Control] = []
-    if state.searching:
-        overlay.append(
-            ft.ProgressRing(width=20, height=20, stroke_width=2, left=12, top=8)
-        )
-    if not state.searching and not state.results:
-        overlay.append(_empty_hint())
-
-    return ft.Column(
-        expand=True,
-        spacing=0,
-        controls=[
-            _table_header(state),
-            ft.Container(
-                expand=True,
-                bgcolor=C.SURFACE,
-                content=ft.Stack(expand=True, controls=[list_view, *overlay]),
+        # 注意：ft.Scrollbar 是滚动条「配置对象」而非容器控件，必须通过 ListView 的
+        # scroll= 属性传入；把它当控件包裹 content 会在挂载该分支时使组件 fiber 失效
+        # （表现为结果列表首次渲染后永久冻结、不再随输入更新）。
+        list_view = ft.ListView(
+            ref=services.results_list,
+            controls=rows,
+            expand=True,
+            spacing=0,
+            padding=ft.Padding(0, 4, 0, 4),
+            item_extent=ROW_HEIGHT,  # 固定行高：懒加载精确估算滚动范围
+            build_controls_on_demand=True,  # 虚拟构建，仅渲染可视行，长列表高性能
+            scroll=ft.Scrollbar(
+                thumb_visibility=True, track_visibility=True, thickness=10
             ),
+            on_scroll=_on_scroll_event,
+        )
+
+        # 注意：Stack 的子控件只放「此刻真的需要显示的」。
+        # 绝不要写成 `... else ft.Container()` 这种空容器占位 —— 空 Container 在 Stack
+        # 的松约束下会被撑成整个 Stack 大小，而且**是可命中的**（实测由最小复现确认），
+        # 于是它成了盖在结果列表上的一层全尺寸透明遮罩，把行的单击/双击/右键全部吞掉。
+        # 症状极具迷惑性：表头在 Stack 外面，点击排序一切正常，只有结果行毫无反应。
+        overlay: list[ft.Control] = []
+        if state.searching:
+            overlay.append(
+                ft.ProgressRing(width=20, height=20, stroke_width=2, left=12, top=8)
+            )
+        if not state.searching and not rows:
+            overlay.append(_empty_hint())
+
+        return ft.Column(
+            expand=True,
+            spacing=0,
+            controls=[
+                _table_header(state),
+                ft.Container(
+                    expand=True,
+                    bgcolor=C.SURFACE,
+                    content=ft.Stack(expand=True, controls=[list_view, *overlay]),
+                ),
+            ],
+        )
+
+    # 整树记忆化：返回同一个根控件对象时，flet 对 {"_b": 根控件} 的 diff 会走
+    # dataclass 同一性短路，整棵子树零遍历。依赖必须覆盖「影响外观」的全部输入。
+    return ft.use_memo(
+        _build,
+        [
+            rows,
+            empty_query,
+            state.engine_ok,
+            state.engine_msg,
+            state.searching,
+            state.col_widths,
+            state.drag_col,
+            state.hover_col,
+            state.sort_col,
+            state.sort_desc,
+            state.bookmarks,
         ],
     )

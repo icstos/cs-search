@@ -149,37 +149,52 @@ def SearchBar(state: AppState):
         [state.use_regex, state.focus, state.focus_epoch, state.query_set_seq],
     )
 
-    return ft.Container(
-        padding=sym_padding(12, 8),
-        bgcolor=C.SURFACE,
-        border=bottom_border(),
-        content=ft.Row(
-            spacing=8,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                ft.Icon(ft.Icons.SEARCH, color=C.TEXT_SUB, size=20),
-                search_field,
-                _regex_toggle(state),
-                _dropdown(state, "category", state.category, CATEGORIES, 96),
-                _dropdown(state, "time", state.time_range, TIME_RANGES, 92),
-                _dropdown(state, "size", state.size_range, SIZE_RANGES, 110),
-                ft.IconButton(
-                    ft.Icons.BOOKMARK_ADD, icon_size=20,
-                    tooltip="保存当前搜索条件为书签",
-                    on_click=lambda e: open_bookmark(state),
-                ),
-                ft.IconButton(
-                    ft.Icons.REFRESH, icon_size=20,
-                    tooltip="刷新 (F5)",
-                    on_click=lambda e: asyncio.create_task(
-                        run_search(state, keep_selection=True)
+    def _build() -> ft.Control:
+        return ft.Container(
+            padding=sym_padding(12, 8),
+            bgcolor=C.SURFACE,
+            border=bottom_border(),
+            content=ft.Row(
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Icon(ft.Icons.SEARCH, color=C.TEXT_SUB, size=20),
+                    search_field,
+                    _regex_toggle(state),
+                    _dropdown(state, "category", state.category, CATEGORIES, 96),
+                    _dropdown(state, "time", state.time_range, TIME_RANGES, 92),
+                    _dropdown(state, "size", state.size_range, SIZE_RANGES, 110),
+                    ft.IconButton(
+                        ft.Icons.BOOKMARK_ADD, icon_size=20,
+                        tooltip="保存当前搜索条件为书签",
+                        on_click=lambda e: open_bookmark(state),
                     ),
-                ),
-                ft.IconButton(
-                    ft.Icons.SETTINGS, icon_size=20,
-                    tooltip="设置全局热键",
-                    on_click=lambda e: open_hotkey(state),
-                ),
-            ],
-        ),
+                    ft.IconButton(
+                        ft.Icons.REFRESH, icon_size=20,
+                        tooltip="刷新 (F5)",
+                        on_click=lambda e: asyncio.create_task(
+                            run_search(state, keep_selection=True)
+                        ),
+                    ),
+                    ft.IconButton(
+                        ft.Icons.SETTINGS, icon_size=20,
+                        tooltip="设置全局热键",
+                        on_click=lambda e: open_hotkey(state),
+                    ),
+                ],
+            ),
+        )
+
+    # 整树记忆化：搜索栏只由「搜索框实例 + 正则开关 + 三个筛选值」决定外观，
+    # 打字、结果更新、选中变化都不该让它重建（flet 的 observable 是对象级通知，
+    # 不做这层缓存的话每个 state 字段变化都会把整条工具栏重建一遍）。
+    return ft.use_memo(
+        _build,
+        [
+            search_field,
+            state.use_regex,
+            state.category,
+            state.time_range,
+            state.size_range,
+        ],
     )

@@ -20,8 +20,6 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from everytools.core.dll_loader import get_dll_loader
-
 from csearch.constants import (
     PAGE_SIZE,
     QUERY_TIMEOUT,
@@ -128,6 +126,11 @@ class SearchEngine:
     # ------------------------------------------------------------------ 初始化
     def _init(self) -> None:
         try:
+            # 惰性导入：everytools 会连带拉起 requests/charset_normalizer（约 0.9s），
+            # 放在函数内可以让 csearch.engine 的导入本身保持极轻，便于预加载线程
+            # 与桌面客户端启动并行（见 csearch/preload.py）。
+            from everytools.core.dll_loader import get_dll_loader
+
             loader = get_dll_loader()
             self._dll = loader.everything_dll
             self.version = loader.version

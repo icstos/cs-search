@@ -16,23 +16,44 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-# pystray / pynput / Pillow 为可选依赖：导入失败时模块仍可导入，start() 返回 False 降级
-try:
-    import pystray
-    from pystray import Menu, MenuItem
-except Exception:  # noqa: BLE001
-    pystray = None  # type: ignore[assignment]
-    Menu = MenuItem = None  # type: ignore[assignment,misc]
+# pystray / pynput / Pillow 为可选依赖。三者合计约 0.8s 导入，而托盘与热键都是
+# 「窗口起来之后才有意义」的能力，因此推迟到 start()/set_hotkey() 真正用到时再导入，
+# 让应用启动关键路径上只剩 flet（见 csearch/preload.py）。
+pystray: Any = None
+Menu: Any = None
+MenuItem: Any = None
+Image: Any = None
+ImageDraw: Any = None
+keyboard: Any = None
 
-try:
-    from PIL import Image, ImageDraw
-except Exception:  # noqa: BLE001
-    Image = ImageDraw = None  # type: ignore[assignment,misc]
+_deps_loaded = False
 
-try:
-    from pynput import keyboard
-except Exception:  # noqa: BLE001
-    keyboard = None  # type: ignore[assignment]
+
+def _load_deps() -> None:
+    """惰性加载可选依赖（幂等；任一失败都只降级，不抛异常）。"""
+    global pystray, Menu, MenuItem, Image, ImageDraw, keyboard, _deps_loaded
+    if _deps_loaded:
+        return
+    _deps_loaded = True
+    try:
+        import pystray as _pystray
+        from pystray import Menu as _Menu
+        from pystray import MenuItem as _MenuItem
+    except Exception:  # noqa: BLE001
+        _pystray = _Menu = _MenuItem = None
+    pystray, Menu, MenuItem = _pystray, _Menu, _MenuItem
+    try:
+        from PIL import Image as _Image
+        from PIL import ImageDraw as _ImageDraw
+    except Exception:  # noqa: BLE001
+        _Image = _ImageDraw = None
+    Image, ImageDraw = _Image, _ImageDraw
+    try:
+        from pynput import keyboard as _keyboard
+    except Exception:  # noqa: BLE001
+        _keyboard = None
+    keyboard = _keyboard
+
 
 # 托盘图标候选（兼容历史拼写 icon_widows.ico）
 _ICON_CANDIDATES = ("icon_windows.ico", "icon_widows.ico", "icon.ico")
@@ -136,6 +157,7 @@ class TrayManager:
     # ------------------------------------------------------------ 生命周期
     def start(self) -> bool:
         """启动托盘与热键（守护线程）。返回托盘是否可用；热键失败不影响托盘。"""
+        _load_deps()  # 惰性导入 pystray / Pillow / pynput（约 0.8s）
         with self._lock:
             if self._started:
                 return True
@@ -235,6 +257,7 @@ class TrayManager:
             pass
 
     def _start_hotkey(self) -> bool:
+        _load_deps()  # 惰性导入 pynput
         self._stop_hotkey()
         combo = self._hotkey_combo
         if not combo or keyboard is None:
