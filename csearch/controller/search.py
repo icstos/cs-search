@@ -173,6 +173,11 @@ async def run_search(state: AppState, *, keep_selection: bool = False) -> None:
     state.last_query, state.last_sort = query, sort_val
     services.wheel_acc, state.max_ext = 0.0, 0.0  # 新结果集回到顶部
 
+    # 空结果集必须显式清空：下面的分片循环在 len(rows) == 0 时一次都不执行，
+    # 若不清空 state.results 会保留上一次的结果，界面残留旧行且看不到「无匹配结果」。
+    if not rows:
+        state.results = []
+
     for i in range(0, len(rows), RESULT_CHUNK):
         if state.seq != seq:
             return  # 输入已变化：停止填充，由新搜索接手
