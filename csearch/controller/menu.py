@@ -1,6 +1,6 @@
 """右键菜单覆盖层：打开 / 关闭与指针坐标换算。
 
-Flet 1.0.0 桌面客户端不渲染 ``ft.ContextMenu``（原生 secondary_items 与程序化
+Flet 1.0.3 桌面客户端不渲染 ``ft.ContextMenu``（原生 secondary_items 与程序化
 ``open()`` 都没有任何可见效果），因此菜单改为根 Stack 自绘覆盖层，本模块只负责
 「作用对象 + 页面逻辑坐标」这两件事，不涉及任何控件构造。
 
@@ -18,7 +18,7 @@ from csearch.state import AppState
 
 # 菜单面板尺寸（与 ui/menu.py 对齐，仅用于贴边夹紧）
 MENU_WIDTH = 220
-ROW_ITEM_COUNT = 7      # 结果行菜单项数
+ROW_ITEM_COUNT = 7  # 结果行菜单项数
 BOOKMARK_ITEM_COUNT = 2  # 书签菜单项数
 ITEM_HEIGHT = 30
 PANEL_PADDING = 8

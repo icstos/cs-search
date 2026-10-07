@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from csearch import store
-from csearch.constants import DialogKind
+from csearch.constants import DialogKind, is_valid_hotkey
 from csearch.controller.common import snack
 from csearch.controller.search import run_search
 from csearch.state import AppState, services
@@ -23,6 +23,11 @@ def _set_hotkey(combo: str) -> bool:
 
 def confirm_hotkey(state: AppState) -> None:
     combo = state.hotkey_text.strip().lower()
+    if combo and not is_valid_hotkey(combo):
+        # 纯修饰键（alt / ctrl+alt）或残缺组合（alt+）：注册后会变成「按修饰键即唤起」，
+        # 这里先挡下并给出可操作的提示，对话框保持打开
+        snack("热键需包含至少一个非修饰键，如 alt+space、ctrl+shift+f")
+        return
     if combo:
         if not _set_hotkey(combo):
             snack("热键注册失败，请更换组合（如 alt+space / ctrl+shift+f）")

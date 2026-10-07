@@ -1,7 +1,8 @@
 """系统托盘（pystray）+ 全局热键（pynput）独立模块。
 
 设计要点：
-- 完全解耦：不 import 任何业务模块，通过构造参数注入的回调与主程序通信；
+- 完全解耦：不 import 任何业务逻辑模块（state / controller / engine），只依赖
+  ``constants`` 里的零依赖常量与热键校验；通过构造参数注入的回调与主程序通信；
 - 线程安全：托盘消息循环与热键监听均运行在守护子线程，互不阻塞主线程；
   所有 GUI 操作由调用方经事件桥抛回主线程执行（见 controller.session.bridge_loop），
   禁止在回调中直接操作 Flet 控件；
@@ -11,10 +12,13 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
 import threading
 from collections.abc import Callable
 from typing import Any
+
+from csearch.constants import DEFAULT_HOTKEY, is_valid_hotkey
 
 # pystray / pynput / Pillow 为可选依赖。三者合计约 0.8s 导入，而托盘与热键都是
 # 「窗口起来之后才有意义」的能力，因此推迟到 start()/set_hotkey() 真正用到时再导入，
@@ -62,6 +66,53 @@ _CB = Callable[[], None]
 # 热键组合 → pynput GlobalHotKeys 语法
 _MOD_ALIASES = {"alt": "<alt>", "ctrl": "<ctrl>", "shift": "<shift>", "win": "<cmd>"}
 _KEY_ALIASES = {"space": "<space>", "enter": "<enter>", "esc": "<esc>", "tab": "<tab>"}
+
+# 逻辑键 → 候选虚拟键码（修饰键给出左右两个 VK，任一按下即视为按下）。
+# 供触发瞬间的键态复核使用；MapVirtualKey 对未知名字不可靠，故用显式表。
+_VK_CODES: dict[str, tuple[int, ...]] = {
+    "alt": (0xA4, 0xA5), "ctrl": (0xA2, 0xA3), "shift": (0xA0, 0xA1),
+    "win": (0x5B, 0x5C), "space": (0x20,), "enter": (0x0D,), "esc": (0x1B,),
+    "tab": (0x09,), "backspace": (0x08,), "delete": (0x2E,), "insert": (0x2D,),
+    "up": (0x26,), "down": (0x28,), "left": (0x25,), "right": (0x27,),
+    "home": (0x24,), "end": (0x23,), "pageup": (0x21,), "pagedown": (0x22,),
+    **{f"f{i}": (0x6F + i,) for i in range(1, 13)},
+}
+
+
+def _combo_vks(combo: str) -> list[tuple[int, ...]] | None:
+    """组合串 → 各逻辑键的候选 VK 组；含无法映射的键时返回 None（跳过复核）。"""
+    out: list[tuple[int, ...]] = []
+    for part in (p.strip().lower() for p in combo.split("+") if p.strip()):
+        if part in _VK_CODES:
+            out.append(_VK_CODES[part])
+        elif len(part) == 1 and part.isalnum():
+            out.append((ord(part.upper()),))
+        else:
+            return None
+    return out or None
+
+
+def _combo_held(combo: str) -> bool:
+    """组合里每个键此刻是否真的按着；非 Windows 或无法映射时放行（交给 pynput）。
+
+    pynput 的 ``HotKey`` 状态集合只在「匹配到的 release」到达时才收缩，任何一次
+    释放丢失（输入法/其它钩子吞键、键盘布局变化导致归一化结果不同）都会让组合
+    永久残留 —— 之后**单独按一下 Alt** 就补齐了组合集合、凭空唤起窗口。故以
+    「触发瞬间的真实键态」为准，从根上杜绝这类误触发。
+    """
+    if os.name != "nt":
+        return True
+    vks = _combo_vks(combo)
+    if vks is None:
+        return True
+    try:
+        user32 = ctypes.windll.user32
+        user32.GetAsyncKeyState.restype = ctypes.c_short  # 高位置 1 = 当前按下
+        return all(
+            any(user32.GetAsyncKeyState(vk) & 0x8000 for vk in group) for group in vks
+        )
+    except Exception:  # noqa: BLE001 —— 键态查询失败：不阻断热键
+        return True
 
 
 def _default_icon_path() -> str | None:
@@ -130,7 +181,7 @@ class TrayManager:
         *,
         icon_path: str | None = None,
         title: str = "CSearch",
-        hotkey: str = "alt+space",
+        hotkey: str = DEFAULT_HOTKEY,
         on_hotkey: _CB | None = None,
         on_toggle: _CB | None = None,
         on_show: _CB | None = None,
@@ -262,10 +313,13 @@ class TrayManager:
         combo = self._hotkey_combo
         if not combo or keyboard is None:
             return not combo  # 空串 = 主动禁用，视为成功
+        if not is_valid_hotkey(combo):
+            # 纯修饰键 / 残缺组合：注册它等于「按下修饰键就唤起窗口」，直接拒绝
+            return False
         try:
             listener = keyboard.GlobalHotKeys(
                 # 固定触发 on_hotkey（激活窗口）；未注入时回退 on_toggle
-                {_to_pynput(combo): lambda: self._fire(self._on_hotkey or self._on_toggle)}
+                {_to_pynput(combo): lambda: self._fire_hotkey(combo)}
             )
             listener.daemon = True
             listener.start()
@@ -274,6 +328,11 @@ class TrayManager:
         except Exception:  # noqa: BLE001 —— 注册失败（权限/被占用）：降级为无热键
             self._hotkey = None
             return False
+
+    def _fire_hotkey(self, combo: str) -> None:
+        """热键触发时的复核闸门：组合键此刻必须真的全部按着，否则丢弃本次触发。"""
+        if _combo_held(combo):
+            self._fire(self._on_hotkey or self._on_toggle)
 
     def _stop_hotkey(self) -> None:
         listener = self._hotkey

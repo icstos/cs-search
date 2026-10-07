@@ -1,7 +1,7 @@
-# CSearch — Everything 1.5 极速文件搜索（Flet 1.0.0 声明式）
+# CSearch — Everything 1.5 极速文件搜索
 
 在 Windows 10/11 上复刻 Everything 的本地文件搜索体验：毫秒级回显、Everything 原生搜索语法、
-实时索引同步、系统托盘常驻、全局热键唤起。**完全基于 Everything 1.5 + Python 3.12 + Flet 1.0.0。**
+实时索引同步、系统托盘常驻、全局热键唤起。**完全基于 Everything 1.5 + Python 3.12 + Flet 1.0.3。**
 
 ## 快速开始
 
@@ -48,11 +48,11 @@ C:\Softwares\Python-V3.12.10.x64\python.exe main.py               # 或 python m
    `Esc` 清空，`F5` 刷新，`Ctrl+D` 复制路径，`Ctrl+E` 定位，`Ctrl+A` 全选。
 8. 窗口状态记忆：自动保存/恢复尺寸位置。
 
-## 架构（v3 重构，Python 3.12+ / Flet 1.0.0）
+## 架构（v3 重构，Python 3.12+ / Flet 1.0.3）
 
 ```
 main.py                  极简入口（委托 bootstrap.run）
-app.py                   独立介绍站点（Flet 1.0.0，flet run app.py）
+app.py                   独立介绍站点（Flet 1.0.3，flet run app.py）
 csearch/
 ├── constants.py         常量 / 过滤器选项 / 排序码 / 列宽 / Focus·DialogKind 枚举
 ├── models.py            数据模型（ResultItem / SearchOutcome / Bookmark / 配置 dataclass）

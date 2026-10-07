@@ -1,4 +1,4 @@
-"""CSearch 介绍站点（单文件 Flet 1.0.0 应用，桌面 / Web 通用）。
+"""CSearch 介绍站点（单文件 Flet应用，桌面 / Web 通用）。
 
 运行：
     flet run app.py          # 桌面窗口
@@ -6,7 +6,7 @@
 
 特性：单文件、无外部资源；顶栏导航平滑滚动、悬停反馈、响应式栅格、首屏淡入、
 明暗主题切换（本地 JSON 持久化）、命令一键复制。
-适配目标版本：Flet 1.0.0 稳定版。
+适配目标版本：Flet 最新稳定版（v1.0.3）。
 """
 
 from __future__ import annotations
@@ -28,16 +28,28 @@ _GITHUB = "https://github.com/"
 
 _PALETTE = {
     "light": {
-        "bg": "#FFFFFF", "surface": "#F7F8FA", "card": "#FFFFFF",
-        "text": "#202124", "sub": "#5F6368", "hint": "#9AA0A6",
-        "border": "#E4E7ED", "gradient": ["#F4F8FF", "#EAF1FE", "#FFFFFF"],
-        "shadow": "#1A73E8", "nav_bg": ft.Colors.with_opacity(0.82, "#FFFFFF"),
+        "bg": "#FFFFFF",
+        "surface": "#F7F8FA",
+        "card": "#FFFFFF",
+        "text": "#202124",
+        "sub": "#5F6368",
+        "hint": "#9AA0A6",
+        "border": "#E4E7ED",
+        "gradient": ["#F4F8FF", "#EAF1FE", "#FFFFFF"],
+        "shadow": "#1A73E8",
+        "nav_bg": ft.Colors.with_opacity(0.82, "#FFFFFF"),
     },
     "dark": {
-        "bg": "#0F1115", "surface": "#171A21", "card": "#1C2029",
-        "text": "#E8EAED", "sub": "#9AA0A6", "hint": "#5F6368",
-        "border": "#2A2F3A", "gradient": ["#10141C", "#131A28", "#0F1115"],
-        "shadow": "#000000", "nav_bg": ft.Colors.with_opacity(0.82, "#14171E"),
+        "bg": "#0F1115",
+        "surface": "#171A21",
+        "card": "#1C2029",
+        "text": "#E8EAED",
+        "sub": "#9AA0A6",
+        "hint": "#5F6368",
+        "border": "#2A2F3A",
+        "gradient": ["#10141C", "#131A28", "#0F1115"],
+        "shadow": "#000000",
+        "nav_bg": ft.Colors.with_opacity(0.82, "#14171E"),
     },
 }
 
@@ -115,7 +127,9 @@ class LandingSite:
         self.page.show_dialog(ft.SnackBar(ft.Text(text, size=13), duration=1600))
 
     def _goto(self, key: str) -> None:
-        self.page.scroll_to(scroll_key=key, duration=320, curve=ft.AnimationCurve.EASE_OUT)
+        self.page.scroll_to(
+            scroll_key=key, duration=320, curve=ft.AnimationCurve.EASE_OUT
+        )
 
     def _on_scroll(self, e) -> None:
         self.scroll_offset = float(e.pixels or 0)
@@ -127,10 +141,20 @@ class LandingSite:
             spacing=6,
             controls=[
                 ft.Text(eyebrow, size=12, weight=ft.FontWeight.W_700, color=_ACCENT),
-                ft.Text(title, size=26, weight=ft.FontWeight.W_800,
-                        color=self.p["text"], text_align=ft.TextAlign.CENTER),
-                ft.Text(desc, size=14, color=self.p["sub"],
-                        text_align=ft.TextAlign.CENTER, width=640),
+                ft.Text(
+                    title,
+                    size=26,
+                    weight=ft.FontWeight.W_800,
+                    color=self.p["text"],
+                    text_align=ft.TextAlign.CENTER,
+                ),
+                ft.Text(
+                    desc,
+                    size=14,
+                    color=self.p["sub"],
+                    text_align=ft.TextAlign.CENTER,
+                    width=640,
+                ),
             ],
         )
 
@@ -140,7 +164,9 @@ class LandingSite:
             border_radius=14,
             padding=pad,
             border=ft.Border.all(1, self.p["border"]),
-            shadow=ft.BoxShadow(0, 6, 18, ft.Colors.with_opacity(0.06, self.p["shadow"])),
+            shadow=ft.BoxShadow(
+                0, 6, 18, ft.Colors.with_opacity(0.06, self.p["shadow"])
+            ),
             content=content,
         )
 
@@ -172,8 +198,9 @@ class LandingSite:
             spacing=8,
             controls=[
                 ft.Icon(ft.Icons.SPEED, color=_ACCENT, size=24),
-                ft.Text("CSearch", size=18, weight=ft.FontWeight.W_800,
-                        color=self.p["text"]),
+                ft.Text(
+                    "CSearch", size=18, weight=ft.FontWeight.W_800, color=self.p["text"]
+                ),
             ],
         )
         if wide:
@@ -195,7 +222,9 @@ class LandingSite:
                 controls=[
                     self._theme_button(),
                     ft.IconButton(
-                        ft.Icons.MENU, icon_size=22, icon_color=self.p["text"],
+                        ft.Icons.MENU,
+                        icon_size=22,
+                        icon_color=self.p["text"],
                         on_click=lambda e: self._toggle_mobile_menu(),
                     ),
                 ],
@@ -223,7 +252,9 @@ class LandingSite:
                 bgcolor=self.p["card"],
                 border_radius=10,
                 padding=10,
-                top=58, right=16, width=180,
+                top=58,
+                right=16,
+                width=180,
                 border=ft.Border.all(1, self.p["border"]),
                 content=ft.Column(
                     tight=True,
@@ -249,15 +280,21 @@ class LandingSite:
     def _hero(self) -> ft.Control:
         self._hero_title = ft.Text(
             "Everything 内核 · 毫秒级文件搜索",
-            size=40, weight=ft.FontWeight.W_800, color=self.p["text"],
-            text_align=ft.TextAlign.CENTER, opacity=0,
+            size=40,
+            weight=ft.FontWeight.W_800,
+            color=self.p["text"],
+            text_align=ft.TextAlign.CENTER,
+            opacity=0,
             animate_opacity=ft.Animation(700, ft.AnimationCurve.EASE_OUT),
         )
         self._hero_sub = ft.Text(
             "基于 Everything 1.5 SDK 与 Flet 构建的桌面文件搜索工具：\n"
             "原生 IPC 直查、分页流式渲染、全局热键、系统托盘、运行历史与书签，开箱即用。",
-            size=15, color=self.p["sub"], text_align=ft.TextAlign.CENTER,
-            width=720, opacity=0,
+            size=15,
+            color=self.p["sub"],
+            text_align=ft.TextAlign.CENTER,
+            width=720,
+            opacity=0,
             animate_opacity=ft.Animation(900, ft.AnimationCurve.EASE_OUT),
         )
         stats = ft.Row(
@@ -290,9 +327,12 @@ class LandingSite:
         glow = ft.Container(
             expand=True,
             gradient=ft.RadialGradient(
-                center=ft.Alignment(0.9, 0.1), radius=1.2,
-                colors=[ft.Colors.with_opacity(0.10, _ACCENT),
-                        ft.Colors.with_opacity(0, _ACCENT)],
+                center=ft.Alignment(0.9, 0.1),
+                radius=1.2,
+                colors=[
+                    ft.Colors.with_opacity(0.10, _ACCENT),
+                    ft.Colors.with_opacity(0, _ACCENT),
+                ],
             ),
         )
         body = ft.Column(
@@ -302,7 +342,8 @@ class LandingSite:
         )
         return ft.Container(
             gradient=ft.LinearGradient(
-                begin=ft.Alignment(-1, -1), end=ft.Alignment(1, 1),
+                begin=ft.Alignment(-1, -1),
+                end=ft.Alignment(1, 1),
                 colors=self.p["gradient"],
             ),
             padding=ft.Padding(24, 72, 24, 72),
@@ -334,13 +375,16 @@ class LandingSite:
                 spacing=10,
                 controls=[
                     ft.Container(
-                        width=40, height=40, border_radius=10,
+                        width=40,
+                        height=40,
+                        border_radius=10,
                         bgcolor=_ACCENT_SOFT,
                         alignment=ft.Alignment(0, 0),
                         content=ft.Icon(icon, color=_ACCENT, size=22),
                     ),
-                    ft.Text(title, size=15, weight=ft.FontWeight.W_700,
-                            color=self.p["text"]),
+                    ft.Text(
+                        title, size=15, weight=ft.FontWeight.W_700, color=self.p["text"]
+                    ),
                     ft.Text(desc, size=12.5, color=self.p["sub"]),
                 ],
             )
@@ -348,18 +392,36 @@ class LandingSite:
 
     def _features(self) -> ft.Control:
         items = [
-            ("BOLT", "极速查询",
-             "Everything IPC 直查 MFT 索引，分页限制传输量，数十万结果毫秒返回。"),
-            ("VIEW_IN_AR", "流式渲染",
-             "结果分片落地、批间让出事件循环，打字与滚轮始终跟手，不卡白屏。"),
-            ("KEYBOARD", "键盘优先",
-             "全局热键唤起，↑↓ 选择、Enter 打开、Ctrl+D 复制路径，双手不离键盘。"),
-            ("BOOKMARK", "书签过滤",
-             "分类/时间/大小组合条件可存为书签，一键应用；支持 Everything 原生语法与正则。"),
-            ("HISTORY", "运行历史",
-             "SQLite 记录每个文件的打开次数，回车优先打开高频文件，并可按列排序。"),
-            ("EXPLORE", "系统集成",
-             "系统托盘、删除入回收站、资源管理器定位、多屏防丢窗与滚轮桥兜底。"),
+            (
+                "BOLT",
+                "极速查询",
+                "Everything IPC 直查 MFT 索引，分页限制传输量，数十万结果毫秒返回。",
+            ),
+            (
+                "VIEW_IN_AR",
+                "流式渲染",
+                "结果分片落地、批间让出事件循环，打字与滚轮始终跟手，不卡白屏。",
+            ),
+            (
+                "KEYBOARD",
+                "键盘优先",
+                "全局热键唤起，↑↓ 选择、Enter 打开、Ctrl+D 复制路径，双手不离键盘。",
+            ),
+            (
+                "BOOKMARK",
+                "书签过滤",
+                "分类/时间/大小组合条件可存为书签，一键应用；支持 Everything 原生语法与正则。",
+            ),
+            (
+                "HISTORY",
+                "运行历史",
+                "SQLite 记录每个文件的打开次数，回车优先打开高频文件，并可按列排序。",
+            ),
+            (
+                "EXPLORE",
+                "系统集成",
+                "系统托盘、删除入回收站、资源管理器定位、多屏防丢窗与滚轮桥兜底。",
+            ),
         ]
         cards = [
             ft.Container(col={"sm": 12, "md": 6, "lg": 4}, content=self._feature(*it))
@@ -372,7 +434,9 @@ class LandingSite:
                 spacing=24,
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    self._section_title("FEATURES", "功能特性", "为高频文件检索场景做的端到端优化"),
+                    self._section_title(
+                        "FEATURES", "功能特性", "为高频文件检索场景做的端到端优化"
+                    ),
                     ft.ResponsiveRow(controls=cards, run_spacing=16, spacing=16),
                 ],
             ),
@@ -384,16 +448,24 @@ class LandingSite:
             spacing=14,
             controls=[
                 ft.Container(
-                    width=34, height=34, border_radius=17, bgcolor=_ACCENT,
+                    width=34,
+                    height=34,
+                    border_radius=17,
+                    bgcolor=_ACCENT,
                     alignment=ft.Alignment(0, 0),
-                    content=ft.Text(str(index), color="#FFFFFF",
-                                    weight=ft.FontWeight.W_800, size=14),
+                    content=ft.Text(
+                        str(index), color="#FFFFFF", weight=ft.FontWeight.W_800, size=14
+                    ),
                 ),
                 ft.Column(
                     spacing=2,
                     controls=[
-                        ft.Text(title, size=14, weight=ft.FontWeight.W_700,
-                                color=self.p["text"]),
+                        ft.Text(
+                            title,
+                            size=14,
+                            weight=ft.FontWeight.W_700,
+                            color=self.p["text"],
+                        ),
                         ft.Text(desc, size=12.5, color=self.p["sub"], width=560),
                     ],
                 ),
@@ -402,16 +474,23 @@ class LandingSite:
 
     def _architecture(self) -> ft.Control:
         steps = [
-            ("引擎层 engine.py",
-             "ctypes 直调 Everything 1.5 SDK DLL，串行锁 + 看门狗 + 索引变更监听。"),
-            ("数据层",
-             "store 负责配置/书签 JSON，history 用 SQLModel/SQLite 记录运行次数。"),
-            ("控制层 controller",
-             "搜索防抖、分页、选中、文件动作、窗口与快捷键按职责拆分。"),
-            ("界面层 ui",
-             "Flet 声明式组件：f(state) 自动重绘，设计令牌统一视觉。"),
-            ("系统集成",
-             "pystray 托盘、pynput 全局热键、WH_MOUSE_LL 滚轮桥，全部守护线程运行。"),
+            (
+                "引擎层 engine.py",
+                "ctypes 直调 Everything 1.5 SDK DLL，串行锁 + 看门狗 + 索引变更监听。",
+            ),
+            (
+                "数据层",
+                "store 负责配置/书签 JSON，history 用 SQLModel/SQLite 记录运行次数。",
+            ),
+            (
+                "控制层 controller",
+                "搜索防抖、分页、选中、文件动作、窗口与快捷键按职责拆分。",
+            ),
+            ("界面层 ui", "Flet 声明式组件：f(state) 自动重绘，设计令牌统一视觉。"),
+            (
+                "系统集成",
+                "pystray 托盘、pynput 全局热键、WH_MOUSE_LL 滚轮桥，全部守护线程运行。",
+            ),
         ]
         return ft.Container(
             key="architecture",
@@ -427,7 +506,9 @@ class LandingSite:
                     self._card(
                         ft.Column(
                             spacing=16,
-                            controls=[self._arch_step(i + 1, *s) for i, s in enumerate(steps)],
+                            controls=[
+                                self._arch_step(i + 1, *s) for i, s in enumerate(steps)
+                            ],
                         ),
                         pad=24,
                     ),
@@ -436,13 +517,19 @@ class LandingSite:
         )
 
     # ------------------------------------------------------------------ 快速开始
-    def _quick_step(self, index: int, title: str, cmd: str | None, desc: str) -> ft.Control:
+    def _quick_step(
+        self, index: int, title: str, cmd: str | None, desc: str
+    ) -> ft.Control:
         body = [
             ft.Row(
                 spacing=10,
                 controls=[
-                    ft.Text(f"{index}", size=14, weight=ft.FontWeight.W_800, color=_ACCENT),
-                    ft.Text(title, size=14, weight=ft.FontWeight.W_700, color=self.p["text"]),
+                    ft.Text(
+                        f"{index}", size=14, weight=ft.FontWeight.W_800, color=_ACCENT
+                    ),
+                    ft.Text(
+                        title, size=14, weight=ft.FontWeight.W_700, color=self.p["text"]
+                    ),
                 ],
             ),
             ft.Text(desc, size=12.5, color=self.p["sub"]),
@@ -450,15 +537,22 @@ class LandingSite:
         if cmd:
             body.append(
                 ft.Container(
-                    bgcolor=self.p["surface"], border_radius=8,
+                    bgcolor=self.p["surface"],
+                    border_radius=8,
                     padding=ft.Padding(12, 8, 8, 8),
                     border=ft.Border.all(1, self.p["border"]),
                     content=ft.Row(
                         controls=[
-                            ft.Text(cmd, size=12.5, expand=True,
-                                    font_family="Consolas", color=self.p["text"]),
+                            ft.Text(
+                                cmd,
+                                size=12.5,
+                                expand=True,
+                                font_family="Consolas",
+                                color=self.p["text"],
+                            ),
                             ft.IconButton(
-                                ft.Icons.CONTENT_COPY, icon_size=16,
+                                ft.Icons.CONTENT_COPY,
+                                icon_size=16,
                                 tooltip="复制命令",
                                 on_click=lambda e, c=cmd: self._copy(c),
                             ),
@@ -473,14 +567,30 @@ class LandingSite:
 
     def _quickstart(self) -> ft.Control:
         steps = [
-            (1, "安装依赖", "pip install -r requirements.txt",
-             "需要 Python 3.12+，并安装/运行 Everything 1.5（x64）。"),
-            (2, "启动应用", "python main.py",
-             "桌面窗口启动；首次会自动检测 Everything 服务与索引状态。"),
-            (3, "唤起搜索", None,
-             "默认 Alt+Space 全局唤起；在设置中可改为 ctrl+shift+f 等组合。"),
-            (4, "打包发布", "flet build windows",
-             "产出独立 exe；assets 内放置字体与图标即可离线运行。"),
+            (
+                1,
+                "安装依赖",
+                "pip install -r requirements.txt",
+                "需要 Python 3.12+，并安装/运行 Everything 1.5（x64）。",
+            ),
+            (
+                2,
+                "启动应用",
+                "python main.py",
+                "桌面窗口启动；首次会自动检测 Everything 服务与索引状态。",
+            ),
+            (
+                3,
+                "唤起搜索",
+                None,
+                "默认 Alt+Space 全局唤起；在设置中可改为 ctrl+shift+f 等组合。",
+            ),
+            (
+                4,
+                "打包发布",
+                "flet build windows",
+                "产出独立 exe；assets 内放置字体与图标即可离线运行。",
+            ),
         ]
         return ft.Container(
             key="quickstart",
@@ -491,7 +601,8 @@ class LandingSite:
                 controls=[
                     self._section_title("QUICK START", "快速开始", "四步跑起来"),
                     ft.Column(
-                        width=720, spacing=12,
+                        width=720,
+                        spacing=12,
                         controls=[self._quick_step(*s) for s in steps],
                     ),
                 ],
@@ -513,12 +624,19 @@ class LandingSite:
                         spacing=8,
                         controls=[
                             ft.Icon(ft.Icons.SPEED, color=_ACCENT, size=18),
-                            ft.Text("CSearch", size=14, weight=ft.FontWeight.W_700,
-                                    color=self.p["text"]),
+                            ft.Text(
+                                "CSearch",
+                                size=14,
+                                weight=ft.FontWeight.W_700,
+                                color=self.p["text"],
+                            ),
                         ],
                     ),
-                    ft.Text("Everything 1.5 + Flet 1.0 · 桌面极速文件搜索",
-                            size=12, color=self.p["hint"]),
+                    ft.Text(
+                        "Everything 1.5 + Flet 1.0 · 桌面极速文件搜索",
+                        size=12,
+                        color=self.p["hint"],
+                    ),
                 ],
             ),
         )

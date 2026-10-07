@@ -1,6 +1,6 @@
 """自绘右键菜单覆盖层（根 Stack 的最后一层）。
 
-为什么不用 ``ft.ContextMenu``：Flet 1.0.0 桌面客户端对它没有任何渲染效果
+为什么不用 ``ft.ContextMenu``：Flet 1.0. 桌面客户端对它没有任何渲染效果
 （原生 ``secondary_items`` 与程序化 ``open()`` 都不可见，实测 ``on_dismiss``
 会立刻以 ``btn=secondary`` 触发），所以这里用「全屏透明遮罩 + 绝对定位面板」自绘，
 行为完全可控。
@@ -88,6 +88,7 @@ def _action(state: AppState, fn: Callable[[], None]) -> Callable[[], None]:
     就等于在整张列表上盖了一层透明板，之后所有点击（含下一次右键）都落在遮罩上，
     行手势再也收不到。
     """
+
     def run() -> None:
         close_menu(state)
         fn()

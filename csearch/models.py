@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from csearch.constants import DEFAULT_HOTKEY
+
 
 @dataclass
 class ResultItem:
@@ -60,5 +62,5 @@ class AppConfig:
     """应用配置（%APPDATA%/CSearch/config.json）。"""
 
     window: WindowGeometry = field(default_factory=WindowGeometry)
-    hotkey: str = "alt+space"
+    hotkey: str = DEFAULT_HOTKEY
     start_hidden: bool = False

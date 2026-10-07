@@ -1,6 +1,6 @@
 """应用启动装配：轻量入口 + 后台预热 + 首帧占位。
 
-启动时序（依据 flet 1.0.0 内部实现，改前先读）：
+启动时序（依据 flet 1.0.3 内部实现，改前先读）：
 
     import csearch.bootstrap        <- 本模块（此刻仅导入 flet / constants / store）
     ft.run(boot)
@@ -36,7 +36,9 @@ from csearch.constants import (
 )
 
 # assets 目录（包的上一级）
-_ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+_ASSETS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets"
+)
 
 # 模块导入即开始预热：此刻 ft.run 尚未调用，客户端也尚未被拉起，两者正好并行
 preload.start()

@@ -81,7 +81,8 @@ def HotkeyDialog(state: AppState):
         spacing=10,
         controls=[
             ft.Text(
-                "全局唤起热键，格式：修饰键+按键（如 alt+space、ctrl+shift+f）。\n"
+                "全局唤起热键，格式：修饰键+按键（如 alt+space、ctrl+shift+f），\n"
+                "必须包含至少一个非修饰键（纯修饰键会退化成「按一下就唤起」）。\n"
                 "留空则禁用全局热键。",
                 size=12, color=C.TEXT_SUB,
             ),

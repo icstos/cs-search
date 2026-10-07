@@ -15,6 +15,7 @@ from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Any
 
+from csearch.constants import DEFAULT_HOTKEY, is_valid_hotkey
 from csearch.models import AppConfig, Bookmark, WindowGeometry
 
 _DIR = Path(os.environ.get("APPDATA", Path.home())) / "CSearch"
@@ -69,7 +70,11 @@ def load_config() -> AppConfig:
         top=win.get("top"),
         maximized=bool(win.get("maximized", False)),
     )
-    hotkey = str(raw.get("hotkey", "alt+space")).strip() or "alt+space"
+    hotkey = str(raw.get("hotkey", DEFAULT_HOTKEY)).strip() or DEFAULT_HOTKEY
+    if not is_valid_hotkey(hotkey):
+        # 历史/手改配置里的空转热键（纯修饰键、末尾多写 + 等）：回退默认，避免
+        # 「只按 Alt 就唤起窗口」或注册失败导致全局唤起键彻底失效。
+        hotkey = DEFAULT_HOTKEY
     return AppConfig(window=geo, hotkey=hotkey,
                      start_hidden=bool(raw.get("start_hidden", False)))
 
