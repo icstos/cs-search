@@ -7,18 +7,19 @@
 → 客户端连上后才回调 ``boot``。也就是说，**模块导入全部发生在客户端进程启动之前**，
 两者是纯串行关系。而本项目的导入里，真正的大头都不在 flet 上：
 
-- ``sqlmodel`` + ``sqlalchemy``（运行历史）      ~1.2s
-- ``everytools``（连带 ``requests``/``charset_normalizer``） ~0.9s
-- ``pystray`` + ``Pillow`` + ``pynput``（托盘/热键） ~0.8s
-- ``pyperclip`` + ``send2trash``（文件操作）      ~0.1s
+- ``everytools``（连带 ``requests``/``charset_normalizer``）        ~0.9s
 
 在导入期就把它们丢给守护线程去做，主线程立刻返回并进入 ``ft.run``，于是
 「拉起并初始化桌面客户端」这段时间被拿来做导入，二者并行。实测可省下约 0.6~0.9s
 的开窗时间（取决于客户端自身启动快慢）。
 
+其余重依赖（``sqlmodel`` / ``pystray`` / ``Pillow`` / ``pynput`` / ``pyperclip`` /
+``send2trash``）本身在各自模块里就是「用到才导入」，它们的第一使用点都在启动后的
+后台线程中（运行历史建表、托盘与热键拉起），因此不占用启动关键路径。
+
 使用方式：
 - ``start()`` 在 ``csearch.bootstrap`` 模块导入时调用（即 ``ft.run`` 之前）；
-- ``wait()`` 在 ``boot`` 里等待完成（放到线程池里等，别阻塞事件循环）；
+- ``wait()`` 在首帧占位组件里等待完成（放到线程池里等，别阻塞事件循环）；
 - 任何一层导入失败都会记在 ``error()`` 里，由调用方决定怎么提示，绝不让启动线程裸崩。
 """
 
@@ -30,13 +31,11 @@ import traceback
 
 # 需要预热的重模块：按「导入图顺序」排列，避免重复触发同一棵子树
 _MODULES: tuple[str, ...] = (
-    "csearch.history",        # sqlmodel / sqlalchemy
-    "csearch.ops",            # pyperclip / send2trash
-    "csearch.tray_manager",   # pystray / Pillow / pynput
-    "csearch.engine",         # everytools（连带 requests）
-    "csearch.state",          # 组装 Services（会加载 Everything DLL）
-    "csearch.controller",     # 控制器门面
-    "csearch.ui.app",         # 界面根组件
+    "everytools.core.dll_loader",  # Everything SDK 绑定（连带 requests 等）
+    "csearch.infra",               # 基础设施层门面（ctypes / JSON / SQLite 仓储）
+    "csearch.service",             # 服务层门面
+    "csearch.viewmodel",           # 视图模型层门面
+    "csearch.view.app",            # 界面根组件
 )
 
 _done = threading.Event()

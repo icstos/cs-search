@@ -21,4 +21,11 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["csearch", "csearch.controller", "csearch.platform", "csearch.ui"]
+packages = [
+    "csearch",
+    "csearch.models",
+    "csearch.infra",
+    "csearch.service",
+    "csearch.viewmodel",
+    "csearch.view",
+]

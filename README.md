@@ -48,56 +48,98 @@ C:\Softwares\Python-V3.12.10.x64\python.exe main.py               # 或 python m
    `Esc` 清空，`F5` 刷新，`Ctrl+D` 复制路径，`Ctrl+E` 定位，`Ctrl+A` 全选。
 8. 窗口状态记忆：自动保存/恢复尺寸位置。
 
-## 架构（v3 重构，Python 3.12+ / Flet 1.0.3）
+## 架构（v4 重构：MVVM + 五层依赖倒置）
+
+严格单向依赖，高层依赖抽象接口，禁止跨层与反向依赖：
+
+```
+View ──▶ ViewModel ──▶ Service ──▶ Infra
+  └──────────┴───────────┴──────────┘
+              Models（五层均可依赖）
+```
 
 ```
 main.py                  极简入口（委托 bootstrap.run）
 app.py                   独立介绍站点（Flet 1.0.3，flet run app.py）
 csearch/
-├── constants.py         常量 / 过滤器选项 / 排序码 / 列宽 / Focus·DialogKind 枚举
-├── models.py            数据模型（ResultItem / SearchOutcome / Bookmark / 配置 dataclass）
-├── engine.py            Everything SDK 封装（分页查询 / 排序 / 看门狗 / 索引监听）
-├── ops.py               文件操作（打开 / 定位 / 复制 / 删除 / 启动 Everything）
-├── store.py             配置与书签 JSON 持久化（容错读取 + 原子写入）
-├── history.py           运行历史（SQLModel / SQLite）
-├── tray_manager.py      系统托盘（pystray）+ 全局热键（pynput），守护子线程、线程安全
-├── wheel_bridge.py      WH_MOUSE_LL 滚轮桥（部分客户端滚轮失效兜底）
-├── services.py          跨线程事件桥（后台线程 → asyncio 主循环）
-├── state.py             应用状态（@ft.observable 数据类）+ 长生命周期服务容器
-├── bootstrap.py         启动装配：页面/窗口配置、全局事件接线、渲染根组件
-├── platform/win32.py    Win32 底层能力（修饰键 / 光标 / 多屏几何 / 窗口置前，统一容错）
-├── controller/          业务控制器（原 logic.py 按职责拆分，门面统一导出）
-│   ├── common.py        页面对象 / 轻提示 / 选中项 / 焦点切换
-│   ├── search.py        防抖搜索 / 分页 / 增量加载 / 静默刷新 / 排序过滤正则 / 滚动
-│   ├── selection.py     单击多选 / 双击 / 键盘移动选中
-│   ├── actions.py       文件动作与运行次数
-│   ├── bookmarks.py     书签保存 / 应用 / 改名 / 删除
-│   ├── settings.py      全局热键 / 自定义大小
+├── bootstrap.py         组合根：装配 infra → service → viewmodel，接页面与全局事件
+├── preload.py           启动预热（重依赖导入与客户端拉起并行）
+├── models/              模型层：数据结构 / 枚举 / 常量 / 抽象接口，无业务逻辑
+│   ├── constants.py     常量与界面调参（单一事实来源）
+│   ├── enums.py         Focus / DialogKind / MenuKind / WindowEventKind / BridgeEventType
+│   ├── entities.py      ResultItem / SearchOutcome / Bookmark / EngineStatus / 配置 / 事件
+│   ├── errors.py        领域错误（EngineUnavailable / SearchTimeout）
+│   └── ports.py         全部抽象接口（Protocol）：九大基础设施端口 + 视图/工厂端口
+├── infra/               基础设施层：底层技术实现，不含业务逻辑
+│   ├── everything_engine.py  Everything 1.5 SDK（分页查询 / 排序 / 看门狗 / 索引监听）
+│   ├── file_ops.py           系统文件操作（打开 / 定位 / 复制 / 回收站 / 启动引擎）
+│   ├── json_store.py         配置与书签 JSON（容错读取 + 原子写入）
+│   ├── run_history.py        运行历史（SQLModel / SQLite，惰性导入）
+│   ├── win32.py              Win32 能力（修饰键 / 光标 / 多屏几何 / 窗口置前）
+│   ├── wheel.py              WH_MOUSE_LL 滚轮桥（部分客户端滚轮失效兜底）
+│   ├── tray.py               托盘（pystray）+ 全局热键（pynput），守护线程
+│   ├── event_bus.py          跨线程事件桥（后台线程 → asyncio 主循环）
+│   ├── flet_window.py        Flet Page.window → Window 端口适配
+│   ├── flet_events.py        Flet 事件 → KeyStroke / WindowEventData 归一化
+│   ├── notifier.py           Flet SnackBar → Notifier 端口适配
+│   └── background_factory.py 托盘 / 滚轮桥工厂（service 不感知具体类型）
+├── service/             服务层：编排核心业务流程，只依赖抽象接口
+│   ├── search.py        查询构建 → 分页检索 → 运行次数回填（一次线程往返）
+│   ├── files.py         文件动作（全部入线程池）
+│   ├── history.py       运行历史（同步仓储 → 异步 API）
+│   ├── bookmarks.py     书签业务规则（默认命名 / ID 生成 / 增删改）
+│   ├── config.py        配置业务规则（非法热键回退默认）
+│   └── session.py       启动装配（后台服务 / 引擎探测 / 索引监听）与退出
+├── viewmodel/           视图模型层：持有 UI 状态、中转业务调用与状态回调
+│   ├── state.py         AppState（@ft.observable 单一状态源）
+│   ├── container.py     Services（viewmodel 可见的全部能力，只含端口与 service）
+│   ├── context.py       AppContext（state + 全部 VM，view 的唯一入口）
+│   ├── search.py        防抖 / 分页 / 增量加载 / 静默刷新 / 排序过滤正则 / 滚动
+│   ├── selection.py     选中 / 双击分发 / 键盘移动 / 焦点域
+│   ├── actions.py       文件动作、运行次数、引擎引导
+│   ├── bookmarks.py     书签保存 / 应用 / 重命名 / 删除
 │   ├── columns.py       列宽拖拽（双通道）与缩放自适应
-│   ├── window.py        托盘显隐 / 几何记忆 / 窗口事件 / 退出
-│   ├── keyboard.py      页面级快捷键分发
-│   └── session.py       服务装配初始化 + 后台桥事件循环
-└── ui/                  声明式组件 + theme.py 设计令牌（颜色/间距/边框单一来源）
-    └── app / searchbar / results / bookmarks / statusbar / dialogs / sidebar / icons
+│   ├── settings.py      全局热键 / 自定义大小
+│   ├── menu.py          右键菜单状态与坐标夹紧
+│   ├── window.py        托盘显隐 / 唤回抢焦 / 几何记忆 / 窗口事件 / 退出
+│   ├── keyboard.py      页面级快捷键路由
+│   └── session.py       初始化编排 + 事件桥消费循环
+└── view/                视图层：纯 Flet 组件，UI = f(状态)，无业务逻辑
+    ├── theme.py         设计令牌（颜色/间距/边框/对齐，单一来源）
+    ├── icons.py         文件类型 → 图标/颜色
+    ├── events.py        事件坐标读取（交给 VM 的纯数据）
+    ├── scroller.py      ListView → ScrollTarget 端口适配
+    └── app / searchbar / results / bookmarks / statusbar / dialogs / menu / sidebar
 ```
+
+分层落点：
+
+| 层 | 允许依赖 | 禁止 |
+| --- | --- | --- |
+| models | 无（仅标准库） | 任何其它层 |
+| infra | models | service / viewmodel / view |
+| service | models（抽象接口） | infra 具体实现 / viewmodel / view |
+| viewmodel | models、service | infra 具体实现 / view 控件 |
+| view | models、viewmodel | service / infra |
 
 设计要点：
 
-- 声明式范式：`UI = f(state)`，组件仅用 `use_state/use_effect/use_memo/use_dialog`，
+- **依赖倒置**：service / viewmodel / view 只 import `models.ports` 里的 Protocol；
+  具体实现在组合根 `bootstrap._build_services()` 里构造并注入，换实现不改调用方。
+- **声明式范式**：`UI = f(state)`，组件仅用 `use_state/use_effect/use_memo/use_ref/use_dialog`，
   状态变更自动驱动重绘，无命令式控件操作。
-- 异步铁律：所有 SDK/系统同步调用经 `asyncio.to_thread` 入线程池 + `threading.Lock` 串行化，
+- **VM 不碰控件**：滚动经 `ScrollTarget`、提示经 `Notifier`、窗口经 `Window`、
+  屏幕能力经 `Screen` 端口下发；按键/窗口事件在 infra 归一化为
+  `KeyStroke` / `WindowEventData` 后再进 VM。
+- **异步铁律**：所有 SDK/系统同步调用在 service 层经 `asyncio.to_thread` 入线程池，
   事件循环零阻塞。
-- Python 3.12 原生语法：`match-case`（键盘/窗口/桥事件分发）、`int | None` 联合类型、
-  dataclass 等，无任何低版本兼容逻辑。
-- 分页查询：`SetMax/SetOffset` 限制单次 IPC 传输量，`GetTotResults` 一次取总数，
-  实测 29 万结果首屏 15~80ms。
-- 本地字体：全局使用 `assets/fonts/AlibabaPuHuiTi-3-55-Regular.otf`（阿里普惠体），
-  任意机器渲染一致（`page.fonts` 注册 + `page.theme.font_family` 全局默认）。
-- 排序常量：顺序式（名称 1/2、路径 3/4、大小 5/6、修改时间 13/14），1.5 服务器实测。
-- 查询看门狗（5s）：`content:` 未启用内容索引时触发实时扫描，超时安全中止
-  （不触碰 DLL 避免死锁，卡死线程自然结束后自动恢复）。
-- 分类用 Everything 原生函数（`folder:`/`doc:`/`pic:`/`video:`/`audio:`/`exe:`），
-  压缩包用 `ext:` 扩展名列表（`archive:` 函数在部分 1.5 配置下无效）。
+- **Python 3.12 原生语法**：`match-case`（键盘 / 窗口 / 桥事件 / 尺寸区间分发）、
+  `int | None` 联合类型、`type` 别名、`StrEnum`、`Protocol`，无任何低版本兼容逻辑。
+- **启动并行**：`preload` 在模块导入期把 everytools 的导入丢给守护线程，
+  与「拉起桌面客户端」并行，省下约 0.6~0.9s 开窗时间。
+- 其余性能要点（分页查询、结果分片落地、行控件缓存、双通道列宽拖拽、查询看门狗、
+  排序常量、分类查询函数）与 v3 完全一致，均在各模块 docstring 中标注「改前先读」。
+
 
 ## 数据与启动
 

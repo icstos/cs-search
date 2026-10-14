@@ -1,22 +1,25 @@
-"""应用启动装配：轻量入口 + 后台预热 + 首帧占位。
+"""组合根：装配 infra → service → viewmodel，配置页面，接线全局事件，启动应用。
+
+分层落点（唯一允许同时"认识"所有层的地方）：
+
+    infra 具体实现 ──注入──▶ service（只依赖 ports）──注入──▶ viewmodel ──▶ view
 
 启动时序（依据 flet 1.0.3 内部实现，改前先读）：
 
-    import csearch.bootstrap        <- 本模块（此刻仅导入 flet / constants / store）
+    import csearch.bootstrap        <- 本模块（此刻仅导入 flet / preload / 常量）
     ft.run(boot)
       └─ asyncio.run(run_async(...))
            └─ FletSocketServer.start()      <- 这里才真正拉起桌面客户端 flet.exe
                 └─ 客户端连上后才回调 boot   <- 首个界面在此渲染
 
-关键结论：**模块导入全部发生在桌面客户端进程启动之前**。因此本模块只做两件事：
+关键结论：**模块导入全部发生在桌面客户端进程启动之前**。因此本模块顶层只做两件事：
 
 1. 导入期立刻用守护线程开始预热重依赖（``preload.start()``），让
    「导入 sqlmodel / everytools / pystray…」与「拉起并初始化客户端」并行；
 2. ``boot`` 里只做页面配置与最小接线，先渲染一个轻量占位帧，等预热结束后再挂载
-   真正的根组件 ``csearch.ui.app.App``。
+   真正的根组件 ``csearch.view.app.App``。
 
-相比于把重依赖留在模块顶层（旧写法约 1.6s 全部串行在客户端启动之前），这样可以把
-其中约 0.6~0.9s 藏到客户端启动的阴影里。
+相比之下，把重依赖与服务装配留在模块顶层会把约 1.6s 全部串行在客户端启动之前。
 """
 
 from __future__ import annotations
@@ -27,12 +30,14 @@ from typing import Any
 
 import flet as ft
 
-from csearch import preload, store
-from csearch.constants import (
+from csearch import preload
+from csearch.models.constants import (
     APP_TITLE,
     FONT_ASSET,
     FONT_FAMILY,
     ICON_ASSET,
+    MIN_WINDOW_HEIGHT,
+    MIN_WINDOW_WIDTH,
 )
 
 # assets 目录（包的上一级）
@@ -44,7 +49,67 @@ _ASSETS_DIR = os.path.join(
 preload.start()
 
 
-def _configure_page(page: ft.Page, cfg) -> None:
+# --------------------------------------------------------------------- 装配
+def _build_services(page: ft.Page) -> Any:
+    """构造 infra 实现 → 注入 service → 打包成 viewmodel 可见的 Services 容器。"""
+    from csearch.infra import (
+        AsyncioEventBus,
+        DefaultBackgroundFactory,
+        EverythingEngine,
+        FletNotifier,
+        FletWindowAdapter,
+        JsonBookmarkStore,
+        JsonConfigStore,
+        SqliteRunHistory,
+        SystemFileOps,
+        Win32Screen,
+    )
+    from csearch.service import (
+        BookmarkService,
+        ConfigService,
+        FileService,
+        HistoryService,
+        SearchService,
+        SessionService,
+    )
+    from csearch.viewmodel.container import Services
+
+    # 1) 基础设施（技术实现）
+    screen = Win32Screen()
+    bus = AsyncioEventBus()
+    engine = EverythingEngine()
+    config_store = JsonConfigStore()
+    bookmark_store = JsonBookmarkStore()
+    run_history = SqliteRunHistory()
+    file_ops = SystemFileOps(screen)
+    factory = DefaultBackgroundFactory(title=APP_TITLE)
+
+    # 2) 服务（只依赖抽象端口）
+    config = ConfigService(config_store)
+    history = HistoryService(run_history)
+    bookmarks = BookmarkService(bookmark_store)
+    search = SearchService(engine, run_history)
+    files = FileService(file_ops)
+    session = SessionService(
+        search=search, history=history, config=config, bus=bus, factory=factory
+    )
+
+    # 3) 视图模型可见的容器
+    return Services(
+        search=search,
+        files=files,
+        history=history,
+        bookmarks=bookmarks,
+        config=config,
+        session=session,
+        bus=bus,
+        window=FletWindowAdapter(page),
+        screen=screen,
+        notifier=FletNotifier(page),
+    )
+
+
+def _configure_page(page: ft.Page, cfg: Any) -> None:
     """全局样式与字体（无边框紧凑桌面风）。"""
     page.title = APP_TITLE
     page.padding = 0
@@ -58,12 +123,15 @@ def _configure_page(page: ft.Page, cfg) -> None:
     )
     page.theme_mode = ft.ThemeMode.LIGHT
 
-    geo = cfg.window
+    geometry = cfg.window
     page.window.title = APP_TITLE
-    page.window.width, page.window.height = geo.width, geo.height
-    page.window.min_width, page.window.min_height = 760, 480
-    if geo.left is not None and geo.top is not None:
-        page.window.left, page.window.top = geo.left, geo.top
+    page.window.width, page.window.height = geometry.width, geometry.height
+    page.window.min_width, page.window.min_height = (
+        MIN_WINDOW_WIDTH,
+        MIN_WINDOW_HEIGHT,
+    )
+    if geometry.left is not None and geometry.top is not None:
+        page.window.left, page.window.top = geometry.left, geometry.top
     else:
         page.window.center()
     page.window.prevent_close = True  # 点 X 拦截为隐藏到托盘
@@ -113,40 +181,52 @@ def _Root():
         ft.use_effect(_watch, [])
         return _Splash()
 
-    from csearch.ui.app import App  # 已预热，此处近乎零成本
+    from csearch.view.app import App  # 已预热，此处近乎零成本
 
     return App()
 
 
 # --------------------------------------------------------------------- 全局接线
-def _deferred_keyboard(e: Any) -> None:
-    """页面级快捷键：首次触发时再导入控制器（预热早已完成，代价可忽略）。"""
-    from csearch.controller import on_keyboard
-    from csearch.state import services
+def _on_keyboard(event: Any) -> None:
+    """页面级快捷键：归一化为 KeyStroke 后交给键盘视图模型。"""
+    from csearch.infra.flet_events import to_key_stroke
+    from csearch.viewmodel.context import current
 
-    asyncio.create_task(on_keyboard(services.state, e))
+    context = current()
+    if context is None:
+        return
+    asyncio.create_task(context.keyboard.handle(to_key_stroke(event)))
 
 
-def _deferred_window_event(e: Any) -> None:
+def _on_window_event(event: Any) -> None:
     """窗口事件：关闭→托盘 / 唤回焦点 / 缩放列适配 / 几何记忆。
 
     注意：flet 1.0 的窗口事件挂在 ``Window.on_event`` 上，Page 并没有
     ``on_window_event`` 字段。写成 ``page.on_window_event`` 只是个普通属性，flet
     永远不读——配合 ``prevent_close=True`` 会表现为「点 X 毫无反应且关不掉」。
     """
-    from csearch.controller import on_window_event
-    from csearch.state import services
+    from csearch.infra.flet_events import to_window_event
+    from csearch.viewmodel.context import current
 
-    on_window_event(services.state, e)
+    context = current()
+    if context is None:
+        return
+    window_event = to_window_event(event)
+    if window_event is not None:
+        context.window.handle(window_event)
 
 
 async def boot(page: ft.Page) -> None:
-    """Flet 入口：配置页面、接线全局事件、渲染根组件。"""
-    cfg = store.load_config()
-    _configure_page(page, cfg)
+    """Flet 入口：装配服务、配置页面、接线全局事件、渲染根组件。"""
+    from csearch.viewmodel.container import install
 
-    page.on_keyboard_event = _deferred_keyboard
-    page.window.on_event = _deferred_window_event
+    services = _build_services(page)
+    install(services)
+
+    _configure_page(page, services.config.load())
+
+    page.on_keyboard_event = _on_keyboard
+    page.window.on_event = _on_window_event
 
     page.render(_Root)  # 1.0 中 render 为同步挂载
 

@@ -2,7 +2,7 @@
 参考Everything实现本地文件、内容搜索功能
 ```ini
 # 项目目标
-使用 Python(3.12+) + Flet（1.0.0） 框架 + everytools库，在 Windows 平台复刻 Everything 文件搜索工具。采用声明式 UI 架构，实现原生级极速搜索体验，界面简洁高效，操作顺滑无卡顿。
+使用 Python(3.12+) + Flet（1.0.3） 框架 + everytools库，在 Windows 平台复刻 Everything 文件搜索工具。采用声明式 UI 架构，实现原生级极速搜索体验，界面简洁高效，操作顺滑无卡顿。
 
 ## 技术栈强制约束
 1.  UI 框架：Flet（严格遵循声明式写法，基于控件组合构建界面）
@@ -88,6 +88,7 @@
 ```
 
 # TODO
+- [x] 2026-09-27：修复BUG：避免仅按下Alt键时会异常激活界面（根因：`_to_pynput` 丢弃空段 + 缺校验，使 `alt` / `alt+` / `ctrl+alt` 被注册成「单键热键」；且 pynput `HotKey` 状态集合只增不减，一次释放丢失就会让后续单按 Alt 补齐组合。修复：注册入口拒绝纯修饰键/残缺组合，触发瞬间按 `GetAsyncKeyState` 复核组合键真实按下，配置非法值回退默认）
 - [x] 2026-09-26：修复BUG：更新输入框内容但没有匹配内容时，搜索结果不进行更新（需要更新为无搜索结果状态）
 - [x] 2026-09-17：修复BUG：搜索框用中文输入法输入时被实时搜索结果更新打断（受控 `TextField` 每次重绘都把滞后的 `state.query` 回写客户端、清空 IME composing region → 改为 `use_memo` 长期持有控件、打字期间属性零下发，程序化写入走 `set_query`）
 - [x] 2026-09-17：修复BUG：关闭键无法关闭程序（`page.on_window_event` 在 flet 1.0 无此字段→改为 `page.window.on_event`；托盘不可用时点 X 降级为真退出）
