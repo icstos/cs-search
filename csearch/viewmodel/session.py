@@ -40,8 +40,8 @@ class SessionViewModel:
         self.state.engine_version = self._s.search.version
         self.state.bookmarks = self._s.bookmarks.load()
 
-        # 优先事件驱动通知；官方 1.5 SDK DLL 缺失时降级为 5s 签名轮询
-        self._s.session.start_change_monitor()
+        # 说明：外部文件变更的实时同步由 ctx.search.sync_loop() 常驻承担
+        # （见 view/app.py 的任务装配），此处无需接线。
 
         # 启动即搜索（环境变量 CSEARCH_QUERY；默认空 = 展示书签面板）
         init_query = os.environ.get(INIT_QUERY_ENV, "").strip()
@@ -66,5 +66,3 @@ class SessionViewModel:
                     return
                 case BridgeEventType.WHEEL:
                     await self._ctx.search.scroll_results(int(event.get("delta", 0) or 0))
-                case BridgeEventType.INDEX_CHANGED:
-                    await self._ctx.search.silent_refresh()

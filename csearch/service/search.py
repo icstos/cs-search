@@ -7,7 +7,6 @@ SQLite 或 everytools 的存在。
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
 
 from csearch.models.constants import PAGE_SIZE
 from csearch.models.entities import EngineStatus, SearchOutcome
@@ -33,10 +32,6 @@ class SearchService:
     @property
     def error_message(self) -> str:
         return self._engine.error_message
-
-    @property
-    def notify_registered(self) -> bool:
-        return self._engine.notify_registered
 
     async def check_status(self) -> EngineStatus:
         return await asyncio.to_thread(self._engine.check_status)
@@ -76,13 +71,3 @@ class SearchService:
             for row in outcome.rows:
                 row.run_count = counts.get(row.full_path, 0)
         return outcome
-
-    # ------------------------------------------------------------------ 索引监听
-    def start_change_monitor(self, callback: Callable[[], None]) -> None:
-        self._engine.start_change_monitor(callback)
-
-    def stop_change_monitor(self) -> None:
-        self._engine.stop_change_monitor()
-
-    def try_register_notify_window(self, hwnd: int, msg_id: int) -> bool:
-        return self._engine.try_register_notify_window(hwnd, msg_id)

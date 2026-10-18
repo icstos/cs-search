@@ -49,4 +49,3 @@ class BridgeEventType(StrEnum):
     HIDE = "hide"
     QUIT = "quit"
     WHEEL = "wheel"
-    INDEX_CHANGED = "index_changed"

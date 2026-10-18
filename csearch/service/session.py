@@ -77,13 +77,6 @@ class SessionService:
         except Exception:  # noqa: BLE001
             self.tray = None
 
-    def start_change_monitor(self) -> None:
-        """优先事件驱动通知；官方 1.5 SDK DLL 缺失时降级为 5s 签名轮询。"""
-        if not self._search.notify_registered:
-            self._search.start_change_monitor(
-                lambda: self._bus.emit(BridgeEventType.INDEX_CHANGED.value)
-            )
-
     # ------------------------------------------------------------------ 托盘 / 热键
     @property
     def tray_available(self) -> bool:
@@ -107,11 +100,14 @@ class SessionService:
 
     # ------------------------------------------------------------------ 退出
     def stop(self) -> None:
-        """退出顺序：滚轮桥 → 托盘（内部先停热键）→ 引擎监听。"""
+        """退出顺序：滚轮桥 → 托盘（内部先停热键）。
+
+        索引变更同步由 viewmodel 层的 ``sync_loop`` 承担，随组件卸载被取消，
+        本层无需收尾。
+        """
         if self.wheel is not None:
             self.wheel.stop()
             self.wheel = None
         if self.tray is not None:
             self.tray.stop()
             self.tray = None
-        self._search.stop_change_monitor()

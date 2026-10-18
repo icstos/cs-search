@@ -35,8 +35,9 @@ C:\Softwares\Python-V3.12.10.x64\python.exe main.py               # 或 python m
 
 1. 极速搜索：输入防抖 100ms，Everything 原生语法（关键词 / 通配符 / 正则 / `ext:` / `content:`），
    结果懒加载（首批 200 条，滚动触底增量加载），表头点击切换四列排序。
-2. 实时索引同步：5s 轻量签名轮询静默刷新结果，保留选中状态；放入官方 1.5 SDK DLL 到
-   `vendor/` 后自动升级为 `Everything_SetNotifyWindow` 事件驱动通知。
+2. 实时索引同步：外部程序（资源管理器等）增删改名文件后，结果列表**约 1 秒内**自动跟着变
+   （新建/删除 0.4~0.9s、改名 1.06s，真机实测）；原地补丁式更新——不塌回一页、不跳回顶部、
+   不受影响的行逐像素不变，选中按完整路径迁移，滚动位置保持不动。
 3. 文件操作：右键菜单 + 快捷键，多选批量（打开 / 定位 / 复制路径 / 复制文件名 /
    删除），删除默认移入回收站（无需确认，可恢复）。
 4. 多维过滤：分类（全部/文件夹/文档/图片/视频/音频/压缩包/可执行文件）、修改时间范围、大小区间。
@@ -71,7 +72,7 @@ csearch/
 │   ├── errors.py        领域错误（EngineUnavailable / SearchTimeout）
 │   └── ports.py         全部抽象接口（Protocol）：九大基础设施端口 + 视图/工厂端口
 ├── infra/               基础设施层：底层技术实现，不含业务逻辑
-│   ├── everything_engine.py  Everything 1.5 SDK（分页查询 / 排序 / 看门狗 / 索引监听）
+│   ├── everything_engine.py  Everything 1.5 SDK（分页查询 / 排序 / 内容搜索看门狗）
 │   ├── file_ops.py           系统文件操作（打开 / 定位 / 复制 / 回收站 / 启动引擎）
 │   ├── json_store.py         配置与书签 JSON（容错读取 + 原子写入）
 │   ├── run_history.py        运行历史（SQLModel / SQLite，惰性导入）
@@ -89,7 +90,7 @@ csearch/
 │   ├── history.py       运行历史（同步仓储 → 异步 API）
 │   ├── bookmarks.py     书签业务规则（默认命名 / ID 生成 / 增删改）
 │   ├── config.py        配置业务规则（非法热键回退默认）
-│   └── session.py       启动装配（后台服务 / 引擎探测 / 索引监听）与退出
+│   └── session.py       启动装配（后台服务 / 引擎探测 / 托盘 / 热键）与退出
 ├── viewmodel/           视图模型层：持有 UI 状态、中转业务调用与状态回调
 │   ├── state.py         AppState（@ft.observable 单一状态源）
 │   ├── container.py     Services（viewmodel 可见的全部能力，只含端口与 service）
@@ -156,6 +157,8 @@ csearch/
 ## 已知限制
 
 - `content:` 需 Everything 启用内容索引（Tools > Options > Content），未启用时较慢并触发超时提示。
-- 索引变更通知为 5s 轮询（托盘改用 pystray 后不再提供消息窗口，
-  `Everything_SetNotifyWindow` 事件驱动通知暂不可用，engine 中保留接口便于未来恢复）。
+- 索引变更同步只能轮询：everytools 附带的 Everything64.dll 是 1.4 SDK，实测 90 个导出符号里
+  没有任何变更通知 API（`SetReplyWindow` 只是「异步查询完成」的回执窗口）。因此由
+  `viewmodel/search.py::sync_loop` 分两级探针轮询（浅探 700ms 一拍 / 全探每 3 拍），
+  约 1.7% 单核开销，窗口隐藏到托盘时完全不探。
 - 删除默认移入回收站（send2trash），可恢复，无需确认。

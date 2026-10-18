@@ -36,7 +36,11 @@ class EventBus(Protocol):
 
 @runtime_checkable
 class SearchEngine(Protocol):
-    """Everything 查询内核（分页查询 / 排序 / 索引变更监听）。"""
+    """Everything 查询内核（分页查询 / 排序）。
+
+    不含「索引变更监听」：当前 SDK DLL 没有任何变更通知 API，同步改由
+    viewmodel 层轮询实现（见 csearch/viewmodel/search.py::sync_loop）。
+    """
 
     version: str
 
@@ -45,9 +49,6 @@ class SearchEngine(Protocol):
 
     @property
     def error_message(self) -> str: ...
-
-    @property
-    def notify_registered(self) -> bool: ...
 
     def check_status(self) -> EngineStatus: ...
 
@@ -65,12 +66,6 @@ class SearchEngine(Protocol):
     def search(
         self, query: str, sort_val: int, offset: int = 0, count: int = 200
     ) -> SearchOutcome: ...
-
-    def start_change_monitor(self, callback: Callable[[], None]) -> None: ...
-
-    def stop_change_monitor(self) -> None: ...
-
-    def try_register_notify_window(self, hwnd: int, msg_id: int) -> bool: ...
 
 
 @runtime_checkable

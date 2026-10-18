@@ -137,7 +137,7 @@ class ActionsViewModel:
             + (f"，失败：{errors[0]}" if errors else "")
         )
         if deleted_paths:
-            asyncio.create_task(self._ctx.search.run_search(keep_selection=True))
+            asyncio.create_task(self._ctx.search.sync_refresh())  # 原地重查，不跳回顶部
 
     # ------------------------------------------------------------------ 引擎引导
     def launch_everything(self) -> None:

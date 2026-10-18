@@ -57,6 +57,8 @@ def App():
     def _setup():
         tasks["init"] = asyncio.create_task(ctx.session.init())
         tasks["bridge"] = asyncio.create_task(ctx.session.bridge_loop())
+        # 外部文件变更的实时同步常驻任务（窗口可见时才探测，隐藏时自动让位）
+        tasks["sync"] = asyncio.create_task(ctx.search.sync_loop())
 
     def _cleanup():
         for task in tasks.values():

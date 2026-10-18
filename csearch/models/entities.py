@@ -30,12 +30,10 @@ class ResultItem:
 
 @dataclass(frozen=True)
 class SearchOutcome:
-    """一次分页查询的结果。"""
+    """一次分页查询的结果（rows 为本次请求区间内的条目，total 为全量匹配数）。"""
 
     rows: list[ResultItem]
     total: int
-    # (total, 前 3 条 full_path+mtime+size)：索引变更签名对比
-    signature: tuple[Any, ...]
 
 
 @dataclass(frozen=True)

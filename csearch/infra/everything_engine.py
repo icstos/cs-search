@@ -6,8 +6,12 @@
 - 看门狗：内容搜索（content:）未启用内容索引时触发实时扫描，超时后安全中止。
   超时后不能调用 Everything_Reset（会与卡死的 QueryW 线程争用 DLL 内部锁而永久
   阻塞），改为记录卡死线程、待其自然结束后自动恢复。
-- 索引变更监听：优先 Everything_SetNotifyWindow（官方 1.5 SDK DLL 专有，放入
-  vendor/ 自动启用）；否则 5s 轻量签名轮询（offset=0, max=3）。
+- **无索引变更通知**（改前先读）：everytools 附带的 Everything64.dll 是 1.4 SDK
+  （实测导出表 90 个符号，只有 SetReplyWindow / SetReplyID / RunCount 系列，
+  没有 1.5 SDK 的 Everything_SetNotifyWindow），Everything 1.5 客户端自身的
+  IPC 也没有变更订阅接口。因此「结果随外部文件变化实时更新」由 viewmodel 层
+  两级轮询实现（见 csearch/viewmodel/search.py 的 sync_loop），本文件只提供
+  尽量快的分页查询能力——探针开销几乎全在 Everything 侧的搜索+排序，与 max 弱相关。
 - 所有调用经 threading.Lock 串行化，由上层 asyncio.to_thread 放入线程池执行。
 """
 
@@ -16,7 +20,6 @@ from __future__ import annotations
 import ctypes
 import os
 import threading
-from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -109,11 +112,6 @@ class EverythingEngine:
         self._err_msg = ""
         self.version = ""
         self._stuck: threading.Thread | None = None
-        self._notify_registered = False
-        self._monitor_stop = threading.Event()
-        self._monitor_cb: Callable[[], None] | None = None
-        self._last_query: tuple[str, int] | None = None
-        self._last_signature: tuple = ()
         self._init()
 
     # ------------------------------------------------------------------ 初始化
@@ -328,10 +326,7 @@ class EverythingEngine:
                     rows.append(self._read_item(i))
                 except Exception:  # noqa: BLE001
                     continue  # 单条读取失败跳过，不中断整体
-            signature = (total, *((r.full_path, r.mtime, r.size) for r in rows[:3]))
-            self._last_query = (query, sort_val)
-            self._last_signature = signature
-            return SearchOutcome(rows=rows, total=total, signature=signature)
+            return SearchOutcome(rows=rows, total=total)
 
     def _read_item(self, index: int) -> ResultItem:
         d = self._dll
@@ -372,56 +367,3 @@ class EverythingEngine:
             if self._stuck.is_alive():
                 raise SearchTimeoutError("上一次查询仍在后台执行（如内容搜索扫描），请稍候重试")
             self._stuck = None
-
-    # ------------------------------------------------------------------ 索引变更监听
-    def try_register_notify_window(self, hwnd: int, msg_id: int) -> bool:
-        """注册索引变更通知窗口（官方 1.5 SDK DLL 专有 API）。"""
-        if not self._available or not hwnd:
-            return False
-        try:
-            fn = getattr(self._dll, "Everything_SetNotifyWindow", None)
-            if fn is None:
-                return False
-            fn.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p]
-            fn(hwnd, msg_id, 0)
-            self._notify_registered = True
-            return True
-        except Exception:  # noqa: BLE001
-            return False
-
-    @property
-    def notify_registered(self) -> bool:
-        return self._notify_registered
-
-    def start_change_monitor(self, callback: Callable[[], None]) -> None:
-        """轮询降级：每 5s 重跑最近查询（max=3）对比签名。"""
-        if self._monitor_cb is not None:
-            return
-        self._monitor_cb = callback
-        threading.Thread(
-            target=self._monitor_loop, name="index-monitor", daemon=True
-        ).start()
-
-    def _monitor_loop(self) -> None:
-        while not self._monitor_stop.is_set():
-            _interrupted = self._monitor_stop.wait(5.0)
-            if _interrupted:
-                return
-            last = self._last_query
-            if last is None:
-                continue
-            try:
-                outcome = self.search(last[0], last[1], offset=0, count=3)
-                if outcome.signature != self._last_signature:
-                    self._last_signature = outcome.signature
-                    if self._monitor_cb:
-                        try:
-                            self._monitor_cb()
-                        except Exception:  # noqa: BLE001
-                            pass
-            except Exception:  # noqa: BLE001
-                continue
-
-    def stop_change_monitor(self) -> None:
-        self._monitor_stop.set()
-        self._last_query = None
