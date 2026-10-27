@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from csearch.models.constants import EVERYTHING_DOWNLOAD_URL
+from csearch.models.entities import ResultItem
 from csearch.models.enums import DialogKind
 
 if TYPE_CHECKING:
@@ -51,18 +53,35 @@ class ActionsViewModel:
         self._s.toast(f"已设置运行次数：{count}")
 
     async def _refresh_run_counts(self, paths: list[str]) -> None:
-        """打开/设置次数后批量回查并本地更新显示值（单次查询，避免逐行查库）。"""
+        """打开/设置次数后批量回查并刷新显示值（单次查询，避免逐行查库）。
+
+        **必须换成新对象，不能原地改字段**（改前先读，这里踩过坑）：flet 的两道变更
+        判定都走 `==` —— ``Observable.__setattr__`` 里的 ``value_equal``（不等才发通知）
+        与 ``use_memo`` 里的 ``shallow_compare_args``（相等就复用上次的控件树）。
+        旧实现是「原地改 row.run_count，再 state.results = list(state.results)」：改完
+        之后新旧列表装的是同一批**已经改过的**对象，`==` 恒为真 → 不发通知、memo 不
+        重算，界面上的次数永远停在旧值（数据库里其实早就加了）。症状就是
+        「双击打开后次数没加一」。
+        换新对象后三件事同时成立：`!=` 成立（发通知 + memo 重算）、行缓存键里的
+        id 与次数都变了（只重建这一行）、未动的行保持同一性（其余行零重绘）。
+        """
         touched = {p for p in paths if p}
         if not touched:
             return
         counts = await self._s.history.get_counts(touched)
+        if not counts:
+            return
+        rows: list[ResultItem] = []
         changed = False
         for row in self.state.results:
-            if row.full_path in touched:
-                row.run_count = counts.get(row.full_path, row.run_count)
+            new_count = counts.get(row.full_path)
+            if new_count is not None and new_count != row.run_count:
+                rows.append(replace(row, run_count=new_count))
                 changed = True
+            else:
+                rows.append(row)  # 次数没变：复用同一对象，该行控件零重建
         if changed:
-            self.state.results = list(self.state.results)  # 整体替换触发重绘
+            self.state.results = rows
 
     # ------------------------------------------------------------------ 文件动作
     async def open_selected(self) -> None:
