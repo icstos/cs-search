@@ -110,6 +110,9 @@ CATEGORIES: list[tuple[str, str]] = [
     ("audio", "音频"),
     ("archive", "压缩包"),
     ("exe", "可执行文件"),
+    # 快捷方式：.lnk（本地快捷方式）+ .url（网页快捷方式）。两者在索引里都是普通文件，
+    # 只能用 ext: 列表匹配 —— Everything 1.4 SDK 没有 lnk: 之类的原生筛选器。
+    ("lnk", "快捷方式"),
 ]
 
 TIME_RANGES: list[tuple[str, str]] = [

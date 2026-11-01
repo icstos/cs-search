@@ -39,6 +39,8 @@ _ICON_TABLE: list[tuple[list[str], str, str]] = [
         Icons.CODE, "#5F6368",
     ),
     (["exe", "msi", "cmd", "com", "scr", "appx", "msix"], Icons.TERMINAL, "#37474F"),
+    # 快捷方式：.lnk 指向本地目标，.url 指向网址
+    (["lnk", "url"], Icons.SHORTCUT, "#00ACC1"),
 ]
 
 _EXT: dict[str, tuple[str, str]] = {
@@ -62,4 +64,5 @@ CATEGORY_ICONS: dict[str, str] = {
     "audio": Icons.MUSIC_NOTE,
     "archive": Icons.ARCHIVE,
     "exe": Icons.TERMINAL,
+    "lnk": Icons.SHORTCUT,
 }

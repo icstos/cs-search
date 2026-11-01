@@ -64,6 +64,8 @@ _CATEGORY_QUERY: dict[str, str] = {
     "audio": "audio:",
     "exe": "exe:",
     "archive": "ext:zip;rar;7z;gz;bz2;xz;tar;iso;cab;jar;war",
+    # 快捷方式没有原生筛选器，同样用 ext: 列表；.url 是 IE/资源管理器保存的网页快捷方式
+    "lnk": "ext:lnk;url",
 }
 
 _TIME_QUERY: dict[str, str] = {
