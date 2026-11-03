@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flet.controls.material.icons import Icons
+from ui import Icons
 
 # (扩展名集合, 图标, 颜色)
 _ICON_TABLE: list[tuple[list[str], str, str]] = [

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 
-import flet as ft
+import ui
 
 from csearch.models.constants import CATEGORIES, SIZE_RANGES, TIME_RANGES
 from csearch.models.enums import Focus
@@ -18,25 +18,25 @@ from csearch.viewmodel.state import AppState
 _TOOLTIPS = {"category": "文件分类", "time": "修改时间", "size": "文件大小"}
 
 
-def _regex_toggle(ctx: AppContext) -> ft.Control:
+def _regex_toggle(ctx: AppContext) -> ui.Control:
     """正则开关胶囊：高亮表示已开启。"""
     on = ctx.state.use_regex
-    return ft.TextButton(
+    return ui.TextButton(
         content=".*",
         tooltip=(
             "正则搜索：已开启，点击关闭（按正则匹配文件名）"
             if on
             else r"正则搜索：点击开启（参考 Everything，如 ^report.*\.xlsx$）"
         ),
-        style=ft.ButtonStyle(
+        style=ui.ButtonStyle(
             color=C.PRIMARY if on else C.TEXT_SUB,
             bgcolor=C.PRIMARY_CONTAINER if on else C.HEADER_BG,
-            padding=ft.Padding(10, 2, 10, 2),
-            shape=ft.StadiumBorder(),
-            side=ft.BorderSide(1, C.PRIMARY if on else C.BORDER_STRONG),
-            text_style=ft.TextStyle(
+            padding=ui.Padding(10, 2, 10, 2),
+            shape=ui.StadiumBorder(),
+            side=ui.BorderSide(1, C.PRIMARY if on else C.BORDER_STRONG),
+            text_style=ui.TextStyle(
                 size=12,
-                weight=ft.FontWeight.W_600 if on else ft.FontWeight.W_500,
+                weight=ui.FontWeight.W_600 if on else ui.FontWeight.W_500,
             ),
         ),
         on_click=lambda e: ctx.search.toggle_regex(),
@@ -49,13 +49,13 @@ def _dropdown(
     value: str,
     options: list[tuple[str, str]],
     width: int,
-) -> ft.Control:
-    return ft.Dropdown(
+) -> ui.Control:
+    return ui.Dropdown(
         value=value,
         width=width,
         dense=True,
         text_size=12,
-        options=[ft.DropdownOption(key=k, text=v) for k, v in options],
+        options=[ui.DropdownOption(key=k, text=v) for k, v in options],
         on_select=lambda e: ctx.search.on_filter(field_name, e.control.value),
         tooltip=_TOOLTIPS[field_name],
     )
@@ -66,7 +66,7 @@ def _search_field_key(state: AppState) -> str:
     return f"search-{state.focus_epoch}" if state.focus == Focus.SEARCH else "search"
 
 
-def _search_field(ctx: AppContext, text: str) -> ft.TextField:
+def _search_field(ctx: AppContext, text: str) -> ui.TextField:
     """构造搜索框控件（只在需要新建时调用）。
 
     为什么 ``value`` 不给 ``state.query`` 做逐帧绑定（重要，改前先读）：
@@ -84,7 +84,7 @@ def _search_field(ctx: AppContext, text: str) -> ft.TextField:
     程序化写入（``state.query_set_seq`` 推进）。
     """
     state = ctx.state
-    return ft.TextField(
+    return ui.TextField(
         value=text,
         hint_text=(
             r"正则模式：输入正则表达式匹配文件名，如 ^report.*\.xlsx$"
@@ -94,13 +94,13 @@ def _search_field(ctx: AppContext, text: str) -> ft.TextField:
         expand=True,
         dense=True,
         # 单个 NoInputBorder 对默认/聚焦/悬停全部状态生效，保持扁平无描边
-        border=ft.NoInputBorder(),
+        border=ui.NoInputBorder(),
         text_size=14,
         ignore_up_down_keys=True,
         autofocus=state.focus == Focus.SEARCH,
         # 唤回窗口时全选已有内容（一次性，输入即可覆盖旧查询）
         selection=(
-            ft.TextSelection(base_offset=0, extent_offset=len(text))
+            ui.TextSelection(base_offset=0, extent_offset=len(text))
             if ctx.services.select_on_focus and text
             else None
         ),
@@ -111,11 +111,11 @@ def _search_field(ctx: AppContext, text: str) -> ft.TextField:
     )
 
 
-@ft.component
+@ui.component
 def SearchBar(ctx: AppContext):
     state = ctx.state
     # 已消费到的程序化写入序号（ref 的读写不触发重绘）
-    seen = ft.use_ref(lambda: state.query_set_seq)
+    seen = ui.use_ref(lambda: state.query_set_seq)
 
     def _field_text() -> str:
         """决定这次新建搜索框时写入的文本。"""
@@ -127,42 +127,42 @@ def SearchBar(ctx: AppContext):
         # state.query 与输入框文本一致，不会吃掉正在输入的字符。
         return state.query
 
-    search_field = ft.use_memo(
+    search_field = ui.use_memo(
         lambda: _search_field(ctx, _field_text()),
         # 依赖刻意不含 state.query / state.results / state.searching：
         # 打字与结果更新都不应让搜索框控件重建或被下发属性。
         [state.use_regex, state.focus, state.focus_epoch, state.query_set_seq],
     )
 
-    def _build() -> ft.Control:
-        return ft.Container(
+    def _build() -> ui.Control:
+        return ui.Container(
             padding=sym_padding(12, 8),
             bgcolor=C.SURFACE,
             border=bottom_border(),
-            content=ft.Row(
+            content=ui.Row(
                 spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                vertical_alignment=ui.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Icon(ft.Icons.SEARCH, color=C.TEXT_SUB, size=20),
+                    ui.Icon(ui.Icons.SEARCH, color=C.TEXT_SUB, size=20),
                     search_field,
                     _regex_toggle(ctx),
                     _dropdown(ctx, "category", state.category, CATEGORIES, 96),
                     _dropdown(ctx, "time", state.time_range, TIME_RANGES, 92),
                     _dropdown(ctx, "size", state.size_range, SIZE_RANGES, 110),
-                    ft.IconButton(
-                        ft.Icons.BOOKMARK_ADD, icon_size=20,
+                    ui.IconButton(
+                        ui.Icons.BOOKMARK_ADD, icon_size=20,
                         tooltip="保存当前搜索条件为书签",
                         on_click=lambda e: ctx.bookmarks.open_save_dialog(),
                     ),
-                    ft.IconButton(
-                        ft.Icons.REFRESH, icon_size=20,
+                    ui.IconButton(
+                        ui.Icons.REFRESH, icon_size=20,
                         tooltip="刷新 (F5)",
                         on_click=lambda e: asyncio.create_task(
                             ctx.search.run_search(keep_selection=True)
                         ),
                     ),
-                    ft.IconButton(
-                        ft.Icons.SETTINGS, icon_size=20,
+                    ui.IconButton(
+                        ui.Icons.SETTINGS, icon_size=20,
                         tooltip="设置全局热键",
                         on_click=lambda e: ctx.settings.open_hotkey(),
                     ),
@@ -173,7 +173,7 @@ def SearchBar(ctx: AppContext):
     # 整树记忆化：搜索栏只由「搜索框实例 + 正则开关 + 三个筛选值」决定外观，
     # 打字、结果更新、选中变化都不该让它重建（flet 的 observable 是对象级通知，
     # 不做这层缓存的话每个 state 字段变化都会把整条工具栏重建一遍）。
-    return ft.use_memo(
+    return ui.use_memo(
         _build,
         [
             search_field,

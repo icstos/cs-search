@@ -1,6 +1,6 @@
 """UI 状态（声明式单一状态源）：UI = f(state)。
 
-``@ft.observable`` 数据类，字段整体替换即自动触发引用它的组件重绘；
+``@ui.observable`` 数据类，字段整体替换即自动触发引用它的组件重绘；
 本层只描述「界面需要知道的一切」，不承载流程编排（编排见各 ViewModel）。
 """
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import flet as ft
+import ui
 
 from csearch.models.constants import DEFAULT_COL_WIDTHS
 from csearch.models.entities import Bookmark, ResultItem
@@ -16,7 +16,7 @@ from csearch.models.enums import DialogKind, Focus, MenuKind
 
 
 @dataclass
-@ft.observable
+@ui.observable
 class AppState:
     """唯一状态源：字段整体替换即自动触发声明式组件重绘。"""
 

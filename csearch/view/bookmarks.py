@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import flet as ft
+import ui
 
 from csearch.models.constants import CATEGORIES, SIZE_RANGES, TIME_RANGES
 from csearch.models.entities import Bookmark
@@ -27,52 +27,52 @@ def _summary(bookmark: Bookmark) -> str:
     return " · ".join(parts)
 
 
-@ft.component
+@ui.component
 def _bookmark_card(ctx: AppContext, bookmark: Bookmark):
-    return ft.GestureDetector(
-        mouse_cursor=ft.MouseCursor.CLICK,
+    return ui.GestureDetector(
+        mouse_cursor=ui.MouseCursor.CLICK,
         on_tap=lambda e: ctx.bookmarks.apply(bookmark),
         on_secondary_tap_down=lambda e: ctx.menu.open_bookmark(
             bookmark, *pointer_position(e)
         ),
-        content=ft.Container(
-            border=ft.Border.all(1, C.BORDER),
+        content=ui.Container(
+            border=ui.Border.all(1, C.BORDER),
             border_radius=radius_all(8),
             bgcolor=C.SURFACE,
-            padding=ft.Padding(12, 10, 6, 10),
-            content=ft.Column(
+            padding=ui.Padding(12, 10, 6, 10),
+            content=ui.Column(
                 spacing=4,
                 tight=True,
                 controls=[
-                    ft.Row(
+                    ui.Row(
                         controls=[
-                            ft.Icon(ft.Icons.BOOKMARK, size=16, color=C.WARNING),
-                            ft.Text(
-                                bookmark.name, size=13, weight=ft.FontWeight.W_600,
+                            ui.Icon(ui.Icons.BOOKMARK, size=16, color=C.WARNING),
+                            ui.Text(
+                                bookmark.name, size=13, weight=ui.FontWeight.W_600,
                                 color=C.TEXT, expand=True, no_wrap=True,
-                                overflow=ft.TextOverflow.ELLIPSIS,
+                                overflow=ui.TextOverflow.ELLIPSIS,
                             ),
                             # 用 GestureDetector 而非 IconButton：需要点击坐标来定位
                             # 覆盖层菜单（IconButton 的 on_click 不携带坐标）
-                            ft.GestureDetector(
-                                mouse_cursor=ft.MouseCursor.CLICK,
+                            ui.GestureDetector(
+                                mouse_cursor=ui.MouseCursor.CLICK,
                                 on_tap=lambda e: ctx.menu.open_bookmark(
                                     bookmark, *pointer_position(e)
                                 ),
-                                content=ft.Container(
-                                    padding=ft.Padding(4, 4, 4, 4),
+                                content=ui.Container(
+                                    padding=ui.Padding(4, 4, 4, 4),
                                     border_radius=radius_all(4),
                                     tooltip="重命名 / 删除",
-                                    content=ft.Icon(
-                                        ft.Icons.MORE_HORIZ, size=16, color=C.TEXT_SUB
+                                    content=ui.Icon(
+                                        ui.Icons.MORE_HORIZ, size=16, color=C.TEXT_SUB
                                     ),
                                 ),
                             ),
                         ],
                     ),
-                    ft.Text(
+                    ui.Text(
                         _summary(bookmark), size=11, color=C.TEXT_SUB,
-                        max_lines=2, overflow=ft.TextOverflow.ELLIPSIS,
+                        max_lines=2, overflow=ui.TextOverflow.ELLIPSIS,
                     ),
                 ],
             ),
@@ -80,20 +80,20 @@ def _bookmark_card(ctx: AppContext, bookmark: Bookmark):
     )
 
 
-@ft.component
+@ui.component
 def BookmarksPanel(ctx: AppContext):
     if not ctx.state.bookmarks:
-        return ft.Container(
+        return ui.Container(
             expand=True,
-            alignment=ft.Alignment(0, 0),
-            content=ft.Column(
-                alignment=ft.MainAxisAlignment.CENTER,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            alignment=ui.Alignment(0, 0),
+            content=ui.Column(
+                alignment=ui.MainAxisAlignment.CENTER,
+                horizontal_alignment=ui.CrossAxisAlignment.CENTER,
                 spacing=8,
                 controls=[
-                    ft.Icon(ft.Icons.BOOKMARK_BORDER, size=48, color=C.TEXT_FAINT),
-                    ft.Text("暂无书签", size=14, color=C.TEXT_HINT),
-                    ft.Text(
+                    ui.Icon(ui.Icons.BOOKMARK_BORDER, size=48, color=C.TEXT_FAINT),
+                    ui.Text("暂无书签", size=14, color=C.TEXT_HINT),
+                    ui.Text(
                         "设置搜索条件后，点击顶部 ★ 保存为书签",
                         size=12, color=C.TEXT_HINT,
                     ),
@@ -101,15 +101,15 @@ def BookmarksPanel(ctx: AppContext):
             ),
         )
 
-    return ft.Container(
+    return ui.Container(
         expand=True,
         padding=sym_padding(12, 12),
-        content=ft.Column(
+        content=ui.Column(
             spacing=8,
             controls=[
-                ft.Text("我的书签", size=13, weight=ft.FontWeight.W_600,
+                ui.Text("我的书签", size=13, weight=ui.FontWeight.W_600,
                         color=C.TEXT_SUB),
-                ft.GridView(
+                ui.GridView(
                     expand=True,
                     max_extent=240,
                     child_aspect_ratio=3.2,

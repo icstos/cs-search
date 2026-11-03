@@ -1,7 +1,7 @@
 # CSearch — Everything 1.5 极速文件搜索
 
 在 Windows 10/11 上复刻 Everything 的本地文件搜索体验：毫秒级回显、Everything 原生搜索语法、
-实时索引同步、系统托盘常驻、全局热键唤起。**完全基于 Everything 1.5 + Python 3.12 + Flet 1.0.3。**
+实时索引同步、系统托盘常驻、全局热键唤起。**完全基于 Everything 1.5 + Python 3.12 + cs-ui（自有 UI 组件库，底层 Flet 1.0.5）。**
 
 ## 快速开始
 
@@ -61,7 +61,7 @@ View ──▶ ViewModel ──▶ Service ──▶ Infra
 
 ```
 main.py                  极简入口（委托 bootstrap.run）
-app.py                   独立介绍站点（Flet 1.0.3，flet run app.py）
+app.py                   独立介绍站点（ui 组件库，flet run app.py）
 csearch/
 ├── bootstrap.py         组合根：装配 infra → service → viewmodel，接页面与全局事件
 ├── preload.py           启动预热（重依赖导入与客户端拉起并行）
@@ -80,9 +80,9 @@ csearch/
 │   ├── wheel.py              WH_MOUSE_LL 滚轮桥（部分客户端滚轮失效兜底）
 │   ├── tray.py               托盘（pystray）+ 全局热键（pynput），守护线程
 │   ├── event_bus.py          跨线程事件桥（后台线程 → asyncio 主循环）
-│   ├── flet_window.py        Flet Page.window → Window 端口适配
-│   ├── flet_events.py        Flet 事件 → KeyStroke / WindowEventData 归一化
-│   ├── notifier.py           Flet SnackBar → Notifier 端口适配
+│   ├── ui_window.py          ui Page.window → Window 端口适配
+│   ├── ui_events.py          ui 事件 → KeyStroke / WindowEventData 归一化
+│   ├── notifier.py           ui SnackBar → Notifier 端口适配
 │   └── background_factory.py 托盘 / 滚轮桥工厂（service 不感知具体类型）
 ├── service/             服务层：编排核心业务流程，只依赖抽象接口
 │   ├── search.py        查询构建 → 分页检索 → 运行次数回填（一次线程往返）
@@ -92,7 +92,7 @@ csearch/
 │   ├── config.py        配置业务规则（非法热键回退默认）
 │   └── session.py       启动装配（后台服务 / 引擎探测 / 托盘 / 热键）与退出
 ├── viewmodel/           视图模型层：持有 UI 状态、中转业务调用与状态回调
-│   ├── state.py         AppState（@ft.observable 单一状态源）
+│   ├── state.py         AppState（@ui.observable 单一状态源）
 │   ├── container.py     Services（viewmodel 可见的全部能力，只含端口与 service）
 │   ├── context.py       AppContext（state + 全部 VM，view 的唯一入口）
 │   ├── search.py        防抖 / 分页 / 增量加载 / 静默刷新 / 排序过滤正则 / 滚动
@@ -105,7 +105,7 @@ csearch/
 │   ├── window.py        托盘显隐 / 唤回抢焦 / 几何记忆 / 窗口事件 / 退出
 │   ├── keyboard.py      页面级快捷键路由
 │   └── session.py       初始化编排 + 事件桥消费循环
-└── view/                视图层：纯 Flet 组件，UI = f(状态)，无业务逻辑
+└── view/                视图层：纯 ui 组件，UI = f(状态)，无业务逻辑
     ├── theme.py         设计令牌（颜色/间距/边框/对齐，单一来源）
     ├── icons.py         文件类型 → 图标/颜色
     ├── events.py        事件坐标读取（交给 VM 的纯数据）

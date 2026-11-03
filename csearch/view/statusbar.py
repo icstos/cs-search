@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import flet as ft
+import ui
 
 from csearch.models.constants import MAX_LOADED
 from csearch.view.theme import C, sym_padding, top_border
@@ -49,26 +49,26 @@ def _right_color(state: AppState) -> str:
     return C.TEXT_HINT
 
 
-@ft.component
+@ui.component
 def StatusBar(ctx: AppContext):
     state = ctx.state
     # 状态栏只由这三段派生文案决定外观：直接以它们为依赖做整树记忆化，
     # 免去「任何 state 字段变化都重建一遍状态栏」的固定开销。
     left, right, right_color = _left_text(state), _right_text(state), _right_color(state)
 
-    def _build() -> ft.Control:
-        return ft.Container(
+    def _build() -> ui.Control:
+        return ui.Container(
             height=28,
             bgcolor=C.SURFACE,
             border=top_border(),
             padding=sym_padding(12, 6),
-            content=ft.Row(
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            content=ui.Row(
+                vertical_alignment=ui.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.Text(left, size=12, color=C.TEXT_SUB, expand=True),
-                    ft.Text(right, size=12, color=right_color),
+                    ui.Text(left, size=12, color=C.TEXT_SUB, expand=True),
+                    ui.Text(right, size=12, color=right_color),
                 ],
             ),
         )
 
-    return ft.use_memo(_build, [left, right, right_color])
+    return ui.use_memo(_build, [left, right, right_color])

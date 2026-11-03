@@ -1,6 +1,6 @@
-"""Flet 事件 → 领域事件 的归一化适配。
+"""ui（flet）事件 → 领域事件 的归一化适配。
 
-viewmodel 只认识 ``KeyStroke`` / ``WindowEventData``，不感知 flet 的事件对象；
+viewmodel 只认识 ``KeyStroke`` / ``WindowEventData``，不感知 ui 的事件对象；
 所有框架细节（键名大小写与空间、事件类型枚举）在本模块收敛。
 """
 

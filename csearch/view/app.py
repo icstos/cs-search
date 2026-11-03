@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 
-import flet as ft
+import ui
 
 from csearch.view.dialogs import dialogs
 from csearch.view.menu import menu_layer
@@ -32,21 +32,21 @@ def _subscribe_ui_state(ctx: AppContext) -> None:
     搜索流程其实一直在正常跑（结果已写进 ``state.results``），但界面冻结，
     于是表现为「输入框能打字、搜索也发出去了，**结果列表却永远不更新**」。
 
-    这里借 ``ft.use_state`` 完成订阅：它在初值是 ``Observable`` 时会自动为当前
+    这里借 ``ui.use_state`` 完成订阅：它在初值是 ``Observable`` 时会自动为当前
     组件挂上订阅（``StateHook.subscription``），返回的 setter 用不上、丢弃即可，
     状态本身仍是 ``ctx.state`` 这一个单例。
 
     只需在根组件订阅一次：子组件每次都随父组件重渲染而重跑 body，且各自已有
     ``use_memo`` 兜底，无需逐个订阅（这与重构前的行为一致——那时
-    ``ft.use_state(lambda: AppState())`` 返回的是 observable 的 state 本身，
+    ``ui.use_state(lambda: AppState())`` 返回的是 observable 的 state 本身，
     根组件因此自动订阅）。
     """
-    ft.use_state(ctx.state)
+    ui.use_state(ctx.state)
 
 
-@ft.component
+@ui.component
 def App():
-    ctx, _ = ft.use_state(lambda: AppContext.build())
+    ctx, _ = ui.use_state(lambda: AppContext.build())
     _subscribe_ui_state(ctx)
     set_current(ctx)  # 供页面级事件（键盘 / 窗口）在组件树之外回调
     # 注册滚动端口：viewmodel 只持有 ScrollTarget 抽象，不接触 ListView 控件
@@ -64,16 +64,16 @@ def App():
         for task in tasks.values():
             task.cancel()
 
-    ft.use_effect(_setup, [], _cleanup)
+    ui.use_effect(_setup, [], _cleanup)
     dialogs(ctx)
 
     # 根 Stack：内容列 + 右键菜单覆盖层（遮罩/面板按指针坐标绝对定位）。
     # fit=EXPAND 是必须的：松约束下内容列会按内容收缩，右下的空白区点击会落空。
-    return ft.Stack(
+    return ui.Stack(
         expand=True,
-        fit=ft.StackFit.EXPAND,
+        fit=ui.StackFit.EXPAND,
         controls=[
-            ft.Column(
+            ui.Column(
                 expand=True,
                 spacing=0,
                 controls=[

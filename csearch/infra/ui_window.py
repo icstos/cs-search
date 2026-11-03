@@ -1,24 +1,24 @@
-"""主窗口适配器：把 Flet ``Page.window`` 收敛为领域无关的 ``Window`` 端口。
+"""主窗口适配器：把 ``ui.Page.window`` 收敛为领域无关的 ``Window`` 端口。
 
 为什么放在 infra：窗口的显示/隐藏/置前/销毁本质是「与 UI 技术栈的交互」，
 把它抽象成端口后，viewmodel 只需调用 ``window.show()`` 之类的语义方法，
-既不 import flet，也不接触任何控件对象。
+既不 import ui，也不接触任何控件对象。
 
 注意（历史坑）：窗口事件挂在 ``Window.on_event``，Page 并没有 ``on_window_event``；
-写成 ``page.on_window_event`` 只是个普通属性，flet 永远不读。
+写成 ``page.on_window_event`` 只是个普通属性，运行时永远不读它。
 """
 
 from __future__ import annotations
 
-import flet as ft
+import ui
 
 from csearch.models.entities import WindowGeometry
 
 
-class FletWindowAdapter:
-    """``Window`` 端口的 Flet 实现（构造时注入 Page）。"""
+class UiWindowAdapter:
+    """``Window`` 端口的 ui 实现（构造时注入 Page）。"""
 
-    def __init__(self, page: ft.Page) -> None:
+    def __init__(self, page: ui.Page) -> None:
         self._page = page
 
     @property

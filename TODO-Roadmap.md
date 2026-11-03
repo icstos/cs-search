@@ -14,12 +14,12 @@
 参考Everything实现本地文件、内容搜索功能
 ```ini
 # 项目目标
-使用 Python(3.12+) + Flet（1.0.3） 框架 + everytools库，在 Windows 平台复刻 Everything 文件搜索工具。采用声明式 UI 架构，实现原生级极速搜索体验，界面简洁高效，操作顺滑无卡顿。
+使用 Python(3.12+) + cs-ui（0.1.1，自有 UI 组件库，底层 Flet 1.0.5）+ everytools库，在 Windows 平台复刻 Everything 文件搜索工具。采用声明式 UI 架构，实现原生级极速搜索体验，界面简洁高效，操作顺滑无卡顿。
 
 ## 技术栈强制约束
-1.  UI 框架：Flet（严格遵循声明式写法，基于控件组合构建界面）
+1.  UI 框架：cs-ui（`import ui`，不再直接依赖 flet；严格遵循声明式写法，基于控件组合构建界面）
 2.  搜索内核：everytools（适配 Everything 1.5+，兼容文件名搜索与内容搜索）
-3.  异步规则：所有 SDK 同步调用必须通过 `asyncio.to_thread` 放入线程池执行，**严禁阻塞 Flet 事件循环**，保证 UI 全程无冻结
+3.  异步规则：所有 SDK 同步调用必须通过 `asyncio.to_thread` 放入线程池执行，**严禁阻塞 UI 事件循环**，保证 UI 全程无冻结
 4.  配套依赖：
     - 文件操作：使用系统原生 API（os.startfile、subprocess 调用资源管理器并选中文件）
     - 剪贴板：pyperclip

@@ -1,11 +1,11 @@
 """自绘右键菜单覆盖层（根 Stack 的最后一层）。
 
-为什么不用 ``ft.ContextMenu``：Flet 1.0 桌面客户端对它没有任何渲染效果
+为什么不用 ``ui.ContextMenu``：Flet 1.0 桌面客户端对它没有任何渲染效果
 （原生 ``secondary_items`` 与程序化 ``open()`` 都不可见），所以这里用
 「全屏透明遮罩 + 绝对定位面板」自绘，行为完全可控。
 
 实测要点（改动前请先读）：
-- 覆盖层必须放在 ``ft.Stack(fit=ft.StackFit.EXPAND)`` 里，否则没设宽度的子控件
+- 覆盖层必须放在 ``ui.Stack(fit=ui.StackFit.EXPAND)`` 里，否则没设宽度的子控件
   会在松约束下收缩；
 - 遮罩用 ``left/top/right/bottom=0`` 铺满，``bgcolor`` 即使是全透明也会参与命中
   测试，点击别处即关闭菜单；
@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 
-import flet as ft
+import ui
 
 from csearch.models.constants import (
     MENU_ITEM_HEIGHT,
@@ -32,19 +32,19 @@ from csearch.viewmodel.context import AppContext
 _ITEM_WIDTH = MENU_WIDTH - MENU_PANEL_PADDING * 2
 
 
-@ft.component
+@ui.component
 def _MenuItem(
     label: str,
     on_select: Callable[[], None],
     hint: str = "",
     danger: bool = False,
-) -> ft.Control:
+) -> ui.Control:
     """单条菜单项（hover 高亮 + 点击分发）。"""
-    hover, set_hover = ft.use_state(False)
-    trailing: list[ft.Control] = (
-        [ft.Text(hint, size=11, color=C.TEXT_HINT, no_wrap=True)] if hint else []
+    hover, set_hover = ui.use_state(False)
+    trailing: list[ui.Control] = (
+        [ui.Text(hint, size=11, color=C.TEXT_HINT, no_wrap=True)] if hint else []
     )
-    return ft.Container(
+    return ui.Container(
         width=_ITEM_WIDTH,
         height=MENU_ITEM_HEIGHT,
         padding=sym_padding(12, 0),
@@ -52,16 +52,16 @@ def _MenuItem(
         bgcolor=C.PRIMARY_CONTAINER if hover else None,
         on_click=lambda e: on_select(),
         on_hover=lambda e: set_hover(e.data == "true"),
-        content=ft.Row(
+        content=ui.Row(
             spacing=8,
             controls=[
-                ft.Text(
+                ui.Text(
                     label,
                     size=13,
                     color=C.DANGER if danger else C.TEXT,
                     expand=True,
                     no_wrap=True,
-                    overflow=ft.TextOverflow.ELLIPSIS,
+                    overflow=ui.TextOverflow.ELLIPSIS,
                 ),
                 *trailing,
             ],
@@ -85,7 +85,7 @@ def _action(ctx: AppContext, fn: Callable[[], None]) -> Callable[[], None]:
 
 
 # --------------------------------------------------------------------- 结果行菜单
-def _result_items(ctx: AppContext) -> list[ft.Control]:
+def _result_items(ctx: AppContext) -> list[ui.Control]:
     """结果行菜单项：动作在点击瞬间读取 state.menu_row 对应的目标行。"""
     index = ctx.state.menu_row
 
@@ -128,7 +128,7 @@ def _result_items(ctx: AppContext) -> list[ft.Control]:
 
 
 # --------------------------------------------------------------------- 书签菜单
-def _bookmark_items(ctx: AppContext) -> list[ft.Control]:
+def _bookmark_items(ctx: AppContext) -> list[ui.Control]:
     bookmark = next(
         (bm for bm in ctx.state.bookmarks if bm.id == ctx.state.menu_bookmark), None
     )
@@ -147,23 +147,23 @@ def _bookmark_items(ctx: AppContext) -> list[ft.Control]:
 
 
 # --------------------------------------------------------------------- 覆盖层
-def _panel(ctx: AppContext, items: list[ft.Control]) -> ft.Control:
+def _panel(ctx: AppContext, items: list[ui.Control]) -> ui.Control:
     """菜单面板：按指针坐标绝对定位。"""
-    return ft.Container(
+    return ui.Container(
         left=ctx.state.menu_x,
         top=ctx.state.menu_y,
         width=MENU_WIDTH,
         bgcolor=C.SURFACE,
-        border=ft.Border.all(1, C.BORDER_STRONG),
+        border=ui.Border.all(1, C.BORDER_STRONG),
         border_radius=radius_all(6),
-        padding=ft.Padding(
+        padding=ui.Padding(
             MENU_PANEL_PADDING, MENU_PANEL_PADDING, MENU_PANEL_PADDING, MENU_PANEL_PADDING
         ),
-        content=ft.Column(spacing=0, tight=True, controls=items),
+        content=ui.Column(spacing=0, tight=True, controls=items),
     )
 
 
-def menu_layer(ctx: AppContext) -> list[ft.Control]:
+def menu_layer(ctx: AppContext) -> list[ui.Control]:
     """右键菜单覆盖层控件列表（未打开时返回空列表，直接展开进根 Stack）。"""
     if ctx.state.menu_kind is None:
         return []
@@ -175,12 +175,12 @@ def menu_layer(ctx: AppContext) -> list[ft.Control]:
     if not items:
         return []
     return [
-        ft.Container(  # 遮罩：点击别处关闭
+        ui.Container(  # 遮罩：点击别处关闭
             left=0,
             top=0,
             right=0,
             bottom=0,
-            bgcolor=ft.Colors.TRANSPARENT,
+            bgcolor=ui.Colors.TRANSPARENT,
             on_click=lambda e: ctx.menu.close(),
         ),
         _panel(ctx, items),

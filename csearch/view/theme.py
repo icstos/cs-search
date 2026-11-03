@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-import flet as ft
+import ui
 
 
 class C:
@@ -37,34 +37,34 @@ class C:
 
 # 列对齐：-1 左 / 0 中 / 1 右
 ALIGNMENT = {
-    -1: ft.Alignment(-1, 0),
-    0: ft.Alignment(0, 0),
-    1: ft.Alignment(1, 0),
+    -1: ui.Alignment(-1, 0),
+    0: ui.Alignment(0, 0),
+    1: ui.Alignment(1, 0),
 }
 TEXT_ALIGN = {
-    -1: ft.TextAlign.LEFT,
-    0: ft.TextAlign.CENTER,
-    1: ft.TextAlign.RIGHT,
+    -1: ui.TextAlign.LEFT,
+    0: ui.TextAlign.CENTER,
+    1: ui.TextAlign.RIGHT,
 }
 
 
-def sym_padding(h: float, v: float) -> ft.Padding:
+def sym_padding(h: float, v: float) -> ui.Padding:
     """水平 h、垂直 v 的对称内边距。"""
-    return ft.Padding(left=h, top=v, right=h, bottom=v)
+    return ui.Padding(left=h, top=v, right=h, bottom=v)
 
 
-def hairline(color: str = C.BORDER) -> ft.BorderSide:
+def hairline(color: str = C.BORDER) -> ui.BorderSide:
     """1px 细边。"""
-    return ft.BorderSide(1, color)
+    return ui.BorderSide(1, color)
 
 
-def top_border(color: str = C.BORDER) -> ft.Border:
-    return ft.Border(top=hairline(color))
+def top_border(color: str = C.BORDER) -> ui.Border:
+    return ui.Border(top=hairline(color))
 
 
-def bottom_border(color: str = C.BORDER) -> ft.Border:
-    return ft.Border(bottom=hairline(color))
+def bottom_border(color: str = C.BORDER) -> ui.Border:
+    return ui.Border(bottom=hairline(color))
 
 
-def radius_all(value: float) -> ft.BorderRadius:
-    return ft.BorderRadius(value, value, value, value)
+def radius_all(value: float) -> ui.BorderRadius:
+    return ui.BorderRadius(value, value, value, value)

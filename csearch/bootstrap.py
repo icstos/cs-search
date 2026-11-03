@@ -7,7 +7,7 @@
 启动时序（依据 flet 1.0.3 内部实现，改前先读）：
 
     import csearch.bootstrap        <- 本模块（此刻仅导入 flet / preload / 常量）
-    ft.run(boot)
+    ui.run(boot)
       └─ asyncio.run(run_async(...))
            └─ FletSocketServer.start()      <- 这里才真正拉起桌面客户端 flet.exe
                 └─ 客户端连上后才回调 boot   <- 首个界面在此渲染
@@ -28,7 +28,7 @@ import asyncio
 import os
 from typing import Any
 
-import flet as ft
+import ui
 
 from csearch import preload
 from csearch.models.constants import (
@@ -45,23 +45,23 @@ _ASSETS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets"
 )
 
-# 模块导入即开始预热：此刻 ft.run 尚未调用，客户端也尚未被拉起，两者正好并行
+# 模块导入即开始预热：此刻 ui.run 尚未调用，客户端也尚未被拉起，两者正好并行
 preload.start()
 
 
 # --------------------------------------------------------------------- 装配
-def _build_services(page: ft.Page) -> Any:
+def _build_services(page: ui.Page) -> Any:
     """构造 infra 实现 → 注入 service → 打包成 viewmodel 可见的 Services 容器。"""
     from csearch.infra import (
         AsyncioEventBus,
         DefaultBackgroundFactory,
         EverythingEngine,
-        FletNotifier,
-        FletWindowAdapter,
         JsonBookmarkStore,
         JsonConfigStore,
         SqliteRunHistory,
         SystemFileOps,
+        UiNotifier,
+        UiWindowAdapter,
         Win32Screen,
     )
     from csearch.service import (
@@ -103,25 +103,25 @@ def _build_services(page: ft.Page) -> Any:
         config=config,
         session=session,
         bus=bus,
-        window=FletWindowAdapter(page),
+        window=UiWindowAdapter(page),
         screen=screen,
-        notifier=FletNotifier(page),
+        notifier=UiNotifier(page),
     )
 
 
-def _configure_page(page: ft.Page, cfg: Any) -> None:
+def _configure_page(page: ui.Page, cfg: Any) -> None:
     """全局样式与字体（无边框紧凑桌面风）。"""
     page.title = APP_TITLE
     page.padding = 0
     page.spacing = 0
     page.bgcolor = "#F7F8FA"
     page.fonts = {FONT_FAMILY: FONT_ASSET}
-    page.theme = ft.Theme(
+    page.theme = ui.Theme(
         font_family=FONT_FAMILY,
         color_scheme_seed="#1A73E8",
         use_material3=True,
     )
-    page.theme_mode = ft.ThemeMode.LIGHT
+    page.theme_mode = ui.ThemeMode.LIGHT
 
     geometry = cfg.window
     page.window.title = APP_TITLE
@@ -143,29 +143,29 @@ def _configure_page(page: ft.Page, cfg: Any) -> None:
 
 
 # --------------------------------------------------------------------- 首帧占位
-@ft.component
+@ui.component
 def _Splash():
     """预热期间的首帧：极轻量，只为让窗口立刻有内容可画。"""
-    return ft.Container(
+    return ui.Container(
         expand=True,
         bgcolor="#F7F8FA",
-        alignment=ft.Alignment(0, 0),
-        content=ft.Column(
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        alignment=ui.Alignment(0, 0),
+        content=ui.Column(
+            alignment=ui.MainAxisAlignment.CENTER,
+            horizontal_alignment=ui.CrossAxisAlignment.CENTER,
             spacing=12,
             controls=[
-                ft.ProgressRing(width=22, height=22, stroke_width=2.4),
-                ft.Text("正在启动 CSearch…", size=13, color="#5F6368"),
+                ui.ProgressRing(width=22, height=22, stroke_width=2.4),
+                ui.Text("正在启动 CSearch…", size=13, color="#5F6368"),
             ],
         ),
     )
 
 
-@ft.component
+@ui.component
 def _Root():
     """根组件：预热未完成显示占位帧，完成后无缝切到真正的 App。"""
-    ready, set_ready = ft.use_state(preload.done())
+    ready, set_ready = ui.use_state(preload.done())
 
     if not ready:
 
@@ -178,7 +178,7 @@ def _Root():
             task = asyncio.create_task(_wait())
             return lambda: task.cancel()
 
-        ft.use_effect(_watch, [])
+        ui.use_effect(_watch, [])
         return _Splash()
 
     from csearch.view.app import App  # 已预热，此处近乎零成本
@@ -189,7 +189,7 @@ def _Root():
 # --------------------------------------------------------------------- 全局接线
 def _on_keyboard(event: Any) -> None:
     """页面级快捷键：归一化为 KeyStroke 后交给键盘视图模型。"""
-    from csearch.infra.flet_events import to_key_stroke
+    from csearch.infra.ui_events import to_key_stroke
     from csearch.viewmodel.context import current
 
     context = current()
@@ -205,7 +205,7 @@ def _on_window_event(event: Any) -> None:
     ``on_window_event`` 字段。写成 ``page.on_window_event`` 只是个普通属性，flet
     永远不读——配合 ``prevent_close=True`` 会表现为「点 X 毫无反应且关不掉」。
     """
-    from csearch.infra.flet_events import to_window_event
+    from csearch.infra.ui_events import to_window_event
     from csearch.viewmodel.context import current
 
     context = current()
@@ -216,7 +216,7 @@ def _on_window_event(event: Any) -> None:
         context.window.handle(window_event)
 
 
-async def boot(page: ft.Page) -> None:
+async def boot(page: ui.Page) -> None:
     """Flet 入口：装配服务、配置页面、接线全局事件、渲染根组件。"""
     from csearch.viewmodel.container import install
 
@@ -233,4 +233,4 @@ async def boot(page: ft.Page) -> None:
 
 def run() -> None:
     # Flet 1.0 默认 AppView.FLET_APP 即桌面原生窗口
-    ft.run(boot, assets_dir=_ASSETS_DIR)
+    ui.run(boot, assets_dir=_ASSETS_DIR)

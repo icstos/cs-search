@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 
-import flet as ft
+import ui
 
 from csearch.models.constants import COLUMNS, DEFAULT_COL_WIDTHS, ROW_HEIGHT
 from csearch.models.entities import ResultItem
@@ -39,7 +39,7 @@ from csearch.viewmodel.state import AppState
 # --------------------------------------------------------------------- 行控件缓存
 # 键 = (行号, id(条目), 运行次数, 是否选中, 各列宽度)；值 = (条目, 控件)
 # 值里持有条目强引用：既保证 id() 不会被回收后复用，也保证「同一条目」可校验。
-_row_cache: dict[tuple, tuple[ResultItem, ft.Control]] = {}
+_row_cache: dict[tuple, tuple[ResultItem, ui.Control]] = {}
 
 
 def _widths_key(state: AppState) -> tuple[int, ...]:
@@ -56,7 +56,7 @@ def _clear_row_cache() -> None:
         _row_cache.clear()
 
 
-def _build_rows(ctx: AppContext, widths: tuple[int, ...]) -> list[ft.Control]:
+def _build_rows(ctx: AppContext, widths: tuple[int, ...]) -> list[ui.Control]:
     """构建/复用结果行：只新建输入真正变化的行，其余复用同一控件对象。
 
     严格淘汰：本次渲染结束后缓存里只剩下**确实在树上**的条目。这样被移出列表的行
@@ -64,8 +64,8 @@ def _build_rows(ctx: AppContext, widths: tuple[int, ...]) -> list[ft.Control]:
     """
     state = ctx.state
     selected = state.selected
-    used: dict[tuple, tuple[ResultItem, ft.Control]] = {}
-    rows: list[ft.Control] = []
+    used: dict[tuple, tuple[ResultItem, ui.Control]] = {}
+    rows: list[ui.Control] = []
 
     for index, item in enumerate(state.results):
         key = (index, id(item), item.run_count, index in selected, widths)
@@ -84,7 +84,7 @@ def _build_rows(ctx: AppContext, widths: tuple[int, ...]) -> list[ft.Control]:
 
 
 # --------------------------------------------------------------------- 单行
-def _build_row(ctx: AppContext, item: ResultItem, index: int) -> ft.Control:
+def _build_row(ctx: AppContext, item: ResultItem, index: int) -> ui.Control:
     """构建单行控件（普通函数，由 _build_rows 按需调用）。
 
     选中态 / 列宽的变化通过 _build_rows 的缓存键驱动单行重建，不再整批重建，
@@ -102,33 +102,33 @@ def _build_row(ctx: AppContext, item: ResultItem, index: int) -> ft.Control:
     selected = index in state.selected
     widths = state.row_width_snap or state.col_widths
 
-    def _cell_content(col: str, align: int) -> ft.Control:
+    def _cell_content(col: str, align: int) -> ui.Control:
         if col == "name":
             icon_name, icon_color = icon_for(item.name, item.is_folder)
-            return ft.Row(
+            return ui.Row(
                 spacing=6,
                 controls=[
-                    ft.Icon(icon_name, size=16, color=icon_color),
-                    ft.Text(
+                    ui.Icon(icon_name, size=16, color=icon_color),
+                    ui.Text(
                         item.name,
                         size=13,
                         color=C.ON_PRIMARY if selected else C.TEXT,
                         no_wrap=True,
                         expand=True,
-                        overflow=ft.TextOverflow.ELLIPSIS,
+                        overflow=ui.TextOverflow.ELLIPSIS,
                     ),
                 ],
             )
         if col == "path":
-            return ft.Text(
+            return ui.Text(
                 item.path,
                 size=12,
                 color=C.TEXT_SUB,
                 no_wrap=True,
-                overflow=ft.TextOverflow.ELLIPSIS,
+                overflow=ui.TextOverflow.ELLIPSIS,
             )
         if col == "size":
-            return ft.Text(
+            return ui.Text(
                 item.size_str,
                 size=12,
                 color=C.TEXT_SUB,
@@ -136,32 +136,32 @@ def _build_row(ctx: AppContext, item: ResultItem, index: int) -> ft.Control:
                 no_wrap=True,
             )
         if col == "mtime":
-            return ft.Text(
+            return ui.Text(
                 item.date_str,
                 size=12,
                 color=C.TEXT_SUB,
                 text_align=TEXT_ALIGN[align],
                 no_wrap=True,
             )
-        return ft.Text(  # run_count
+        return ui.Text(  # run_count
             str(item.run_count) if item.run_count else "",
             size=12,
             color=C.SUCCESS if item.run_count else C.TEXT_FAINT,
-            weight=ft.FontWeight.W_600 if item.run_count else ft.FontWeight.W_400,
+            weight=ui.FontWeight.W_600 if item.run_count else ui.FontWeight.W_400,
             text_align=TEXT_ALIGN[align],
             no_wrap=True,
         )
 
-    def _cells() -> list[ft.Control]:
-        cells: list[ft.Control] = []
+    def _cells() -> list[ui.Control]:
+        cells: list[ui.Control] = []
         for col, _title, align in COLUMNS:
             width = widths.get(col, DEFAULT_COL_WIDTHS.get(col, 100))
             # 显式宽度：Column/Row 的松约束下不给宽度会收缩到内容尺寸，可点区域随之缩水
             cells.append(
-                ft.GestureDetector(
-                    mouse_cursor=ft.MouseCursor.CLICK,
+                ui.GestureDetector(
+                    mouse_cursor=ui.MouseCursor.CLICK,
                     on_tap=lambda e, c=col: ctx.selection.on_row_click(index, c),
-                    content=ft.Container(
+                    content=ui.Container(
                         width=width,
                         padding=sym_padding(8, 6),
                         alignment=ALIGNMENT[align],
@@ -171,37 +171,37 @@ def _build_row(ctx: AppContext, item: ResultItem, index: int) -> ft.Control:
             )
         return cells
 
-    return ft.GestureDetector(
-        mouse_cursor=ft.MouseCursor.CLICK,
+    return ui.GestureDetector(
+        mouse_cursor=ui.MouseCursor.CLICK,
         on_tap=lambda e: ctx.selection.on_row_click(index),
         on_secondary_tap_down=lambda e: ctx.menu.open_row(index, *pointer_position(e)),
-        content=ft.Container(
+        content=ui.Container(
             height=ROW_HEIGHT,
             bgcolor=C.PRIMARY_CONTAINER
             if selected
             else (C.SURFACE_ALT if index % 2 else C.SURFACE),
-            content=ft.Row(spacing=0, controls=_cells()),
+            content=ui.Row(spacing=0, controls=_cells()),
         ),
     )
 
 
 # --------------------------------------------------------------------- 表头
-def _header_cell(ctx: AppContext, col: str, title: str, width: int) -> ft.Control:
+def _header_cell(ctx: AppContext, col: str, title: str, width: int) -> ui.Control:
     state = ctx.state
     active = state.sort_col == col
     arrow = ""
     if active:
         arrow = " ▲" if not state.sort_desc else " ▼"
-    return ft.GestureDetector(
+    return ui.GestureDetector(
         on_tap=lambda e: ctx.search.on_sort(col),
-        mouse_cursor=ft.MouseCursor.CLICK,
-        content=ft.Container(
+        mouse_cursor=ui.MouseCursor.CLICK,
+        content=ui.Container(
             width=width,
             padding=sym_padding(8, 6),
-            content=ft.Text(
+            content=ui.Text(
                 f"{title}{arrow}",
                 size=12,
-                weight=ft.FontWeight.W_600,
+                weight=ui.FontWeight.W_600,
                 color=C.PRIMARY if active else C.TEXT_SUB,
                 no_wrap=True,
             ),
@@ -209,16 +209,16 @@ def _header_cell(ctx: AppContext, col: str, title: str, width: int) -> ft.Contro
     )
 
 
-def _separator(ctx: AppContext, col: str) -> ft.Control:
+def _separator(ctx: AppContext, col: str) -> ui.Control:
     """列分隔条：外层水平拖拽手势 + 内层按下轮询（双通道兜底）。"""
     state = ctx.state
     active = state.drag_col == col or state.hover_col == col
-    bar = ft.Container(
+    bar = ui.Container(
         width=10,
-        content=ft.Row(
-            alignment=ft.MainAxisAlignment.CENTER,
+        content=ui.Row(
+            alignment=ui.MainAxisAlignment.CENTER,
             controls=[
-                ft.Container(
+                ui.Container(
                     width=2,
                     expand=True,
                     bgcolor=C.TEXT_HINT if active else C.DIVIDER,
@@ -226,12 +226,12 @@ def _separator(ctx: AppContext, col: str) -> ft.Control:
             ],
         ),
     )
-    inner = ft.GestureDetector(
+    inner = ui.GestureDetector(
         content=bar,
-        mouse_cursor=ft.MouseCursor.RESIZE_COLUMN,
+        mouse_cursor=ui.MouseCursor.RESIZE_COLUMN,
         on_tap_down=lambda e: asyncio.create_task(ctx.columns.start_drag(col)),
     )
-    return ft.GestureDetector(
+    return ui.GestureDetector(
         content=inner,
         on_horizontal_drag_start=lambda e: ctx.columns.start_drag_gesture(
             col, pointer_dx(e)
@@ -244,9 +244,9 @@ def _separator(ctx: AppContext, col: str) -> ft.Control:
     )
 
 
-def _table_header(ctx: AppContext) -> ft.Control:
+def _table_header(ctx: AppContext) -> ui.Control:
     state = ctx.state
-    cells: list[ft.Control] = []
+    cells: list[ui.Control] = []
     for col, title, _align in COLUMNS:
         width = state.col_widths.get(col, DEFAULT_COL_WIDTHS.get(col, 100))
         cells.append(_header_cell(ctx, col, title, width))
@@ -254,13 +254,13 @@ def _table_header(ctx: AppContext) -> ft.Control:
     total = sum(
         state.col_widths.get(c, DEFAULT_COL_WIDTHS.get(c, 100)) for c, _, _ in COLUMNS
     )
-    return ft.Container(
+    return ui.Container(
         height=32,
         bgcolor=C.HEADER_BG,
-        border=ft.Border(
-            top=ft.BorderSide(1, C.BORDER), bottom=ft.BorderSide(1, C.BORDER)
+        border=ui.Border(
+            top=ui.BorderSide(1, C.BORDER), bottom=ui.BorderSide(1, C.BORDER)
         ),
-        content=ft.Row(
+        content=ui.Row(
             spacing=0,
             width=total + 40,
             controls=cells,
@@ -269,25 +269,25 @@ def _table_header(ctx: AppContext) -> ft.Control:
 
 
 # --------------------------------------------------------------------- 空态
-def _engine_down_card(ctx: AppContext) -> ft.Control:
-    return ft.Container(
+def _engine_down_card(ctx: AppContext) -> ui.Control:
+    return ui.Container(
         expand=True,
-        alignment=ft.Alignment(0, 0),
-        content=ft.Column(
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        alignment=ui.Alignment(0, 0),
+        content=ui.Column(
+            alignment=ui.MainAxisAlignment.CENTER,
+            horizontal_alignment=ui.CrossAxisAlignment.CENTER,
             spacing=12,
             controls=[
-                ft.Icon(ft.Icons.ERROR_OUTLINE, size=48, color=C.DANGER),
-                ft.Text("Everything 服务未运行", size=16, weight=ft.FontWeight.W_600),
-                ft.Text(
+                ui.Icon(ui.Icons.ERROR_OUTLINE, size=48, color=C.DANGER),
+                ui.Text("Everything 服务未运行", size=16, weight=ui.FontWeight.W_600),
+                ui.Text(
                     ctx.state.engine_msg or "请启动 Everything 后使用",
                     size=13,
                     color=C.TEXT_SUB,
                 ),
-                ft.FilledButton(
+                ui.FilledButton(
                     "一键启动 Everything",
-                    icon=ft.Icons.PLAY_ARROW,
+                    icon=ui.Icons.PLAY_ARROW,
                     on_click=lambda e: ctx.actions.launch_everything(),
                 ),
             ],
@@ -295,24 +295,24 @@ def _engine_down_card(ctx: AppContext) -> ft.Control:
     )
 
 
-def _empty_hint() -> ft.Control:
-    return ft.Container(
+def _empty_hint() -> ui.Control:
+    return ui.Container(
         expand=True,
-        alignment=ft.Alignment(0, 0),
-        content=ft.Column(
-            alignment=ft.MainAxisAlignment.CENTER,
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        alignment=ui.Alignment(0, 0),
+        content=ui.Column(
+            alignment=ui.MainAxisAlignment.CENTER,
+            horizontal_alignment=ui.CrossAxisAlignment.CENTER,
             spacing=8,
             controls=[
-                ft.Icon(ft.Icons.SEARCH_OFF, size=48, color=C.TEXT_HINT),
-                ft.Text("无匹配结果", size=14, color=C.TEXT_HINT),
+                ui.Icon(ui.Icons.SEARCH_OFF, size=48, color=C.TEXT_HINT),
+                ui.Text("无匹配结果", size=14, color=C.TEXT_HINT),
             ],
         ),
     )
 
 
 # --------------------------------------------------------------------- 列表
-@ft.component
+@ui.component
 def Results(ctx: AppContext):
     state = ctx.state
     widths_key = _widths_key(state)
@@ -321,7 +321,7 @@ def Results(ctx: AppContext):
     # （返回书签面板）的首次挂载阶段就已订阅结果集，之后结果分片落地、选中变化都会
     # 触发重渲染；否则首次挂载走早返回分支、从未读取 results，切到列表分支后将收不到
     # 后续更新（列表冻结）。
-    rows = ft.use_memo(
+    rows = ui.use_memo(
         lambda: _build_rows(ctx, widths_key),
         [
             state.results,
@@ -342,7 +342,7 @@ def Results(ctx: AppContext):
 
     empty_query = not state.query.strip()
 
-    def _build() -> ft.Control:
+    def _build() -> ui.Control:
         if not state.engine_ok:
             _clear_row_cache()
             return _engine_down_card(ctx)
@@ -352,52 +352,52 @@ def Results(ctx: AppContext):
             _clear_row_cache()
             return BookmarksPanel(ctx)
 
-        # 注意：ft.Scrollbar 是滚动条「配置对象」而非容器控件，必须通过 ListView 的
+        # 注意：ui.Scrollbar 是滚动条「配置对象」而非容器控件，必须通过 ListView 的
         # scroll= 属性传入；把它当控件包裹 content 会在挂载该分支时使组件 fiber 失效
         # （表现为结果列表首次渲染后永久冻结、不再随输入更新）。
-        list_view = ft.ListView(
+        list_view = ui.ListView(
             ref=results_list_ref,
             controls=rows,
             expand=True,
             spacing=0,
-            padding=ft.Padding(0, 4, 0, 4),
+            padding=ui.Padding(0, 4, 0, 4),
             item_extent=ROW_HEIGHT,  # 固定行高：懒加载精确估算滚动范围
             build_controls_on_demand=True,  # 虚拟构建，仅渲染可视行，长列表高性能
-            scroll=ft.Scrollbar(
+            scroll=ui.Scrollbar(
                 thumb_visibility=True, track_visibility=True, thickness=10
             ),
             on_scroll=_on_scroll_event,
         )
 
         # 注意：Stack 的子控件只放「此刻真的需要显示的」。
-        # 绝不要写成 `... else ft.Container()` 这种空容器占位 —— 空 Container 在 Stack
+        # 绝不要写成 `... else ui.Container()` 这种空容器占位 —— 空 Container 在 Stack
         # 的松约束下会被撑成整个 Stack 大小，而且**是可命中的**（实测由最小复现确认），
         # 于是它成了盖在结果列表上的一层全尺寸透明遮罩，把行的单击/双击/右键全部吞掉。
         # 症状极具迷惑性：表头在 Stack 外面，点击排序一切正常，只有结果行毫无反应。
-        overlay: list[ft.Control] = []
+        overlay: list[ui.Control] = []
         if state.searching:
             overlay.append(
-                ft.ProgressRing(width=20, height=20, stroke_width=2, left=12, top=8)
+                ui.ProgressRing(width=20, height=20, stroke_width=2, left=12, top=8)
             )
         if not state.searching and not rows:
             overlay.append(_empty_hint())
 
-        return ft.Column(
+        return ui.Column(
             expand=True,
             spacing=0,
             controls=[
                 _table_header(ctx),
-                ft.Container(
+                ui.Container(
                     expand=True,
                     bgcolor=C.SURFACE,
-                    content=ft.Stack(expand=True, controls=[list_view, *overlay]),
+                    content=ui.Stack(expand=True, controls=[list_view, *overlay]),
                 ),
             ],
         )
 
     # 整树记忆化：返回同一个根控件对象时，flet 对 {"_b": 根控件} 的 diff 会走
     # dataclass 同一性短路，整棵子树零遍历。依赖必须覆盖「影响外观」的全部输入。
-    return ft.use_memo(
+    return ui.use_memo(
         _build,
         [
             rows,

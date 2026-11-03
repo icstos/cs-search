@@ -1,6 +1,6 @@
 """右键菜单视图模型：打开 / 关闭与坐标夹紧。
 
-Flet 1.0.3 桌面客户端不渲染 ``ft.ContextMenu``（原生 secondary_items 与程序化
+Flet 1.0.5 桌面客户端不渲染 ``ui.ContextMenu``（原生 secondary_items 与程序化
 ``open()`` 都没有任何可见效果），因此菜单改为根 Stack 自绘覆盖层，本层只负责
 「作用对象 + 页面逻辑坐标」这两件事，不涉及任何控件构造。
 """

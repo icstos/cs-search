@@ -1,4 +1,4 @@
-"""CSearch 介绍站点（单文件 Flet应用，桌面 / Web 通用）。
+"""CSearch 介绍站点（单文件 ui 应用，桌面 / Web 通用）。
 
 运行：
     flet run app.py          # 桌面窗口
@@ -6,7 +6,7 @@
 
 特性：单文件、无外部资源；顶栏导航平滑滚动、悬停反馈、响应式栅格、首屏淡入、
 明暗主题切换（本地 JSON 持久化）、命令一键复制。
-适配目标版本：Flet 最新稳定版（v1.0.3）。
+适配目标版本：cs-ui 0.1.1（底层 Flet 1.0.5）。
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-import flet as ft
+import ui
 
 # 主题偏好持久化（与主程序共用 %APPDATA%/CSearch 目录；缺失时静默降级）
 _PREF_PATH = Path(os.environ.get("APPDATA", Path.home())) / "CSearch" / "landing.json"
@@ -37,7 +37,7 @@ _PALETTE = {
         "border": "#E4E7ED",
         "gradient": ["#F4F8FF", "#EAF1FE", "#FFFFFF"],
         "shadow": "#1A73E8",
-        "nav_bg": ft.Colors.with_opacity(0.82, "#FFFFFF"),
+        "nav_bg": ui.Colors.with_opacity(0.82, "#FFFFFF"),
     },
     "dark": {
         "bg": "#0F1115",
@@ -49,7 +49,7 @@ _PALETTE = {
         "border": "#2A2F3A",
         "gradient": ["#10141C", "#131A28", "#0F1115"],
         "shadow": "#000000",
-        "nav_bg": ft.Colors.with_opacity(0.82, "#14171E"),
+        "nav_bg": ui.Colors.with_opacity(0.82, "#14171E"),
     },
 }
 
@@ -84,12 +84,12 @@ def _copy_text(text: str) -> bool:
 class LandingSite:
     """介绍站点：持有页面与主题状态，按区块构建界面。"""
 
-    def __init__(self, page: ft.Page) -> None:
+    def __init__(self, page: ui.Page) -> None:
         self.page = page
         self.theme = _load_theme()
         self.scroll_offset = 0.0
         self.menu_open = False
-        self._mobile_menu: ft.Container | None = None
+        self._mobile_menu: ui.Container | None = None
 
     # ------------------------------------------------------------------ 基础
     @property
@@ -100,9 +100,9 @@ class LandingSite:
         self.page.title = "CSearch - Everything 极速文件搜索"
         self.page.padding = 0
         self.page.spacing = 0
-        self.page.scroll = ft.ScrollMode.AUTO
+        self.page.scroll = ui.ScrollMode.AUTO
         self.page.theme_mode = (
-            ft.ThemeMode.DARK if self.theme == "dark" else ft.ThemeMode.LIGHT
+            ui.ThemeMode.DARK if self.theme == "dark" else ui.ThemeMode.LIGHT
         )
         self.page.bgcolor = self.p["bg"]
         self.page.on_scroll = self._on_scroll
@@ -124,117 +124,117 @@ class LandingSite:
         self.page.run_task(self._hero_fade)
 
     def snack(self, text: str) -> None:
-        self.page.show_dialog(ft.SnackBar(ft.Text(text, size=13), duration=1600))
+        self.page.show_dialog(ui.SnackBar(ui.Text(text, size=13), duration=1600))
 
     def _goto(self, key: str) -> None:
         self.page.scroll_to(
-            scroll_key=key, duration=320, curve=ft.AnimationCurve.EASE_OUT
+            scroll_key=key, duration=320, curve=ui.AnimationCurve.EASE_OUT
         )
 
     def _on_scroll(self, e) -> None:
         self.scroll_offset = float(e.pixels or 0)
 
     # ------------------------------------------------------------------ 通用组件
-    def _section_title(self, eyebrow: str, title: str, desc: str) -> ft.Control:
-        return ft.Column(
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    def _section_title(self, eyebrow: str, title: str, desc: str) -> ui.Control:
+        return ui.Column(
+            horizontal_alignment=ui.CrossAxisAlignment.CENTER,
             spacing=6,
             controls=[
-                ft.Text(eyebrow, size=12, weight=ft.FontWeight.W_700, color=_ACCENT),
-                ft.Text(
+                ui.Text(eyebrow, size=12, weight=ui.FontWeight.W_700, color=_ACCENT),
+                ui.Text(
                     title,
                     size=26,
-                    weight=ft.FontWeight.W_800,
+                    weight=ui.FontWeight.W_800,
                     color=self.p["text"],
-                    text_align=ft.TextAlign.CENTER,
+                    text_align=ui.TextAlign.CENTER,
                 ),
-                ft.Text(
+                ui.Text(
                     desc,
                     size=14,
                     color=self.p["sub"],
-                    text_align=ft.TextAlign.CENTER,
+                    text_align=ui.TextAlign.CENTER,
                     width=640,
                 ),
             ],
         )
 
-    def _card(self, content: ft.Control, *, pad: int = 20) -> ft.Control:
-        return ft.Container(
+    def _card(self, content: ui.Control, *, pad: int = 20) -> ui.Control:
+        return ui.Container(
             bgcolor=self.p["card"],
             border_radius=14,
             padding=pad,
-            border=ft.Border.all(1, self.p["border"]),
-            shadow=ft.BoxShadow(
-                0, 6, 18, ft.Colors.with_opacity(0.06, self.p["shadow"])
+            border=ui.Border.all(1, self.p["border"]),
+            shadow=ui.BoxShadow(
+                0, 6, 18, ui.Colors.with_opacity(0.06, self.p["shadow"])
             ),
             content=content,
         )
 
     # ------------------------------------------------------------------ 导航
-    def _nav_link(self, label: str, key: str) -> ft.Control:
-        return ft.TextButton(
-            content=ft.Text(label, size=13, color=self.p["sub"]),
+    def _nav_link(self, label: str, key: str) -> ui.Control:
+        return ui.TextButton(
+            content=ui.Text(label, size=13, color=self.p["sub"]),
             on_click=lambda e: self._goto(key),
         )
 
-    def _theme_button(self) -> ft.Control:
+    def _theme_button(self) -> ui.Control:
         dark = self.theme == "dark"
-        return ft.IconButton(
-            ft.Icons.DARK_MODE if not dark else ft.Icons.LIGHT_MODE,
+        return ui.IconButton(
+            ui.Icons.DARK_MODE if not dark else ui.Icons.LIGHT_MODE,
             icon_size=20,
             tooltip="切换明暗主题",
             icon_color=self.p["sub"],
             on_click=lambda e: self._toggle_theme(),
         )
 
-    def _navbar(self) -> ft.Control:
+    def _navbar(self) -> ui.Control:
         wide = (self.page.window.width or 1200) >= 860
         links = [
             self._nav_link("功能特性", "features"),
             self._nav_link("架构", "architecture"),
             self._nav_link("快速开始", "quickstart"),
         ]
-        brand = ft.Row(
+        brand = ui.Row(
             spacing=8,
             controls=[
-                ft.Icon(ft.Icons.SPEED, color=_ACCENT, size=24),
-                ft.Text(
-                    "CSearch", size=18, weight=ft.FontWeight.W_800, color=self.p["text"]
+                ui.Icon(ui.Icons.SPEED, color=_ACCENT, size=24),
+                ui.Text(
+                    "CSearch", size=18, weight=ui.FontWeight.W_800, color=self.p["text"]
                 ),
             ],
         )
         if wide:
-            trailing: ft.Control = ft.Row(
+            trailing: ui.Control = ui.Row(
                 spacing=4,
                 controls=[
                     *links,
                     self._theme_button(),
-                    ft.FilledButton(
-                        content=ft.Text("GitHub", size=13, weight=ft.FontWeight.W_600),
-                        icon=ft.Icons.CODE,
+                    ui.FilledButton(
+                        content=ui.Text("GitHub", size=13, weight=ui.FontWeight.W_600),
+                        icon=ui.Icons.CODE,
                         url=_GITHUB,
                     ),
                 ],
             )
         else:
-            trailing = ft.Row(
+            trailing = ui.Row(
                 spacing=2,
                 controls=[
                     self._theme_button(),
-                    ft.IconButton(
-                        ft.Icons.MENU,
+                    ui.IconButton(
+                        ui.Icons.MENU,
                         icon_size=22,
                         icon_color=self.p["text"],
                         on_click=lambda e: self._toggle_mobile_menu(),
                     ),
                 ],
             )
-        return ft.Container(
+        return ui.Container(
             bgcolor=self.p["nav_bg"],
-            padding=ft.Padding(24, 10, 24, 10),
-            border=ft.Border(bottom=ft.BorderSide(1, self.p["border"])),
-            content=ft.Row(
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            padding=ui.Padding(24, 10, 24, 10),
+            border=ui.Border(bottom=ui.BorderSide(1, self.p["border"])),
+            content=ui.Row(
+                alignment=ui.MainAxisAlignment.SPACE_BETWEEN,
                 controls=[brand, trailing],
             ),
         )
@@ -248,15 +248,15 @@ class LandingSite:
                 pass
             self._mobile_menu = None
         if self.menu_open:
-            self._mobile_menu = ft.Container(
+            self._mobile_menu = ui.Container(
                 bgcolor=self.p["card"],
                 border_radius=10,
                 padding=10,
                 top=58,
                 right=16,
                 width=180,
-                border=ft.Border.all(1, self.p["border"]),
-                content=ft.Column(
+                border=ui.Border.all(1, self.p["border"]),
+                content=ui.Column(
                     tight=True,
                     controls=[
                         self._nav_link("功能特性", "features"),
@@ -272,33 +272,33 @@ class LandingSite:
         self.theme = "dark" if self.theme == "light" else "light"
         _save_theme(self.theme)
         self.page.theme_mode = (
-            ft.ThemeMode.DARK if self.theme == "dark" else ft.ThemeMode.LIGHT
+            ui.ThemeMode.DARK if self.theme == "dark" else ui.ThemeMode.LIGHT
         )
         self.render()
 
     # ------------------------------------------------------------------ 首屏
-    def _hero(self) -> ft.Control:
-        self._hero_title = ft.Text(
+    def _hero(self) -> ui.Control:
+        self._hero_title = ui.Text(
             "Everything 内核 · 毫秒级文件搜索",
             size=40,
-            weight=ft.FontWeight.W_800,
+            weight=ui.FontWeight.W_800,
             color=self.p["text"],
-            text_align=ft.TextAlign.CENTER,
+            text_align=ui.TextAlign.CENTER,
             opacity=0,
-            animate_opacity=ft.Animation(700, ft.AnimationCurve.EASE_OUT),
+            animate_opacity=ui.Animation(700, ui.AnimationCurve.EASE_OUT),
         )
-        self._hero_sub = ft.Text(
-            "基于 Everything 1.5 SDK 与 Flet 构建的桌面文件搜索工具：\n"
+        self._hero_sub = ui.Text(
+            "基于 Everything 1.5 SDK 与 cs-ui 构建的桌面文件搜索工具：\n"
             "原生 IPC 直查、分页流式渲染、全局热键、系统托盘、运行历史与书签，开箱即用。",
             size=15,
             color=self.p["sub"],
-            text_align=ft.TextAlign.CENTER,
+            text_align=ui.TextAlign.CENTER,
             width=720,
             opacity=0,
-            animate_opacity=ft.Animation(900, ft.AnimationCurve.EASE_OUT),
+            animate_opacity=ui.Animation(900, ui.AnimationCurve.EASE_OUT),
         )
-        stats = ft.Row(
-            alignment=ft.MainAxisAlignment.CENTER,
+        stats = ui.Row(
+            alignment=ui.MainAxisAlignment.CENTER,
             spacing=32,
             controls=[
                 self._stat("15~80ms", "29 万结果首屏"),
@@ -306,57 +306,57 @@ class LandingSite:
                 self._stat("Alt+Space", "全局热键唤起"),
             ],
         )
-        actions = ft.Row(
-            alignment=ft.MainAxisAlignment.CENTER,
+        actions = ui.Row(
+            alignment=ui.MainAxisAlignment.CENTER,
             spacing=12,
             controls=[
-                ft.FilledButton(
-                    content=ft.Text("快速开始", size=14, weight=ft.FontWeight.W_700),
-                    icon=ft.Icons.ROCKET_LAUNCH,
-                    style=ft.ButtonStyle(padding=ft.Padding(20, 12, 20, 12)),
+                ui.FilledButton(
+                    content=ui.Text("快速开始", size=14, weight=ui.FontWeight.W_700),
+                    icon=ui.Icons.ROCKET_LAUNCH,
+                    style=ui.ButtonStyle(padding=ui.Padding(20, 12, 20, 12)),
                     on_click=lambda e: self._goto("quickstart"),
                 ),
-                ft.OutlinedButton(
-                    content=ft.Text("查看架构", size=14),
-                    icon=ft.Icons.ACCOUNT_TREE,
-                    style=ft.ButtonStyle(padding=ft.Padding(20, 12, 20, 12)),
+                ui.OutlinedButton(
+                    content=ui.Text("查看架构", size=14),
+                    icon=ui.Icons.ACCOUNT_TREE,
+                    style=ui.ButtonStyle(padding=ui.Padding(20, 12, 20, 12)),
                     on_click=lambda e: self._goto("architecture"),
                 ),
             ],
         )
-        glow = ft.Container(
+        glow = ui.Container(
             expand=True,
-            gradient=ft.RadialGradient(
-                center=ft.Alignment(0.9, 0.1),
+            gradient=ui.RadialGradient(
+                center=ui.Alignment(0.9, 0.1),
                 radius=1.2,
                 colors=[
-                    ft.Colors.with_opacity(0.10, _ACCENT),
-                    ft.Colors.with_opacity(0, _ACCENT),
+                    ui.Colors.with_opacity(0.10, _ACCENT),
+                    ui.Colors.with_opacity(0, _ACCENT),
                 ],
             ),
         )
-        body = ft.Column(
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        body = ui.Column(
+            horizontal_alignment=ui.CrossAxisAlignment.CENTER,
             spacing=20,
             controls=[self._hero_title, self._hero_sub, actions, stats],
         )
-        return ft.Container(
-            gradient=ft.LinearGradient(
-                begin=ft.Alignment(-1, -1),
-                end=ft.Alignment(1, 1),
+        return ui.Container(
+            gradient=ui.LinearGradient(
+                begin=ui.Alignment(-1, -1),
+                end=ui.Alignment(1, 1),
                 colors=self.p["gradient"],
             ),
-            padding=ft.Padding(24, 72, 24, 72),
-            content=ft.Stack(controls=[glow, body]),
+            padding=ui.Padding(24, 72, 24, 72),
+            content=ui.Stack(controls=[glow, body]),
         )
 
-    def _stat(self, value: str, label: str) -> ft.Control:
-        return ft.Column(
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+    def _stat(self, value: str, label: str) -> ui.Control:
+        return ui.Column(
+            horizontal_alignment=ui.CrossAxisAlignment.CENTER,
             spacing=2,
             controls=[
-                ft.Text(value, size=22, weight=ft.FontWeight.W_800, color=_ACCENT),
-                ft.Text(label, size=12, color=self.p["sub"]),
+                ui.Text(value, size=22, weight=ui.FontWeight.W_800, color=_ACCENT),
+                ui.Text(label, size=12, color=self.p["sub"]),
             ],
         )
 
@@ -369,28 +369,28 @@ class LandingSite:
             pass
 
     # ------------------------------------------------------------------ 功能
-    def _feature(self, icon: str, title: str, desc: str) -> ft.Control:
+    def _feature(self, icon: str, title: str, desc: str) -> ui.Control:
         return self._card(
-            ft.Column(
+            ui.Column(
                 spacing=10,
                 controls=[
-                    ft.Container(
+                    ui.Container(
                         width=40,
                         height=40,
                         border_radius=10,
                         bgcolor=_ACCENT_SOFT,
-                        alignment=ft.Alignment(0, 0),
-                        content=ft.Icon(icon, color=_ACCENT, size=22),
+                        alignment=ui.Alignment(0, 0),
+                        content=ui.Icon(icon, color=_ACCENT, size=22),
                     ),
-                    ft.Text(
-                        title, size=15, weight=ft.FontWeight.W_700, color=self.p["text"]
+                    ui.Text(
+                        title, size=15, weight=ui.FontWeight.W_700, color=self.p["text"]
                     ),
-                    ft.Text(desc, size=12.5, color=self.p["sub"]),
+                    ui.Text(desc, size=12.5, color=self.p["sub"]),
                 ],
             )
         )
 
-    def _features(self) -> ft.Control:
+    def _features(self) -> ui.Control:
         items = [
             (
                 "BOLT",
@@ -424,55 +424,55 @@ class LandingSite:
             ),
         ]
         cards = [
-            ft.Container(col={"sm": 12, "md": 6, "lg": 4}, content=self._feature(*it))
+            ui.Container(col={"sm": 12, "md": 6, "lg": 4}, content=self._feature(*it))
             for it in items
         ]
-        return ft.Container(
+        return ui.Container(
             key="features",
-            padding=ft.Padding(24, 56, 24, 56),
-            content=ft.Column(
+            padding=ui.Padding(24, 56, 24, 56),
+            content=ui.Column(
                 spacing=24,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                horizontal_alignment=ui.CrossAxisAlignment.CENTER,
                 controls=[
                     self._section_title(
                         "FEATURES", "功能特性", "为高频文件检索场景做的端到端优化"
                     ),
-                    ft.ResponsiveRow(controls=cards, run_spacing=16, spacing=16),
+                    ui.ResponsiveRow(controls=cards, run_spacing=16, spacing=16),
                 ],
             ),
         )
 
     # ------------------------------------------------------------------ 架构
-    def _arch_step(self, index: int, title: str, desc: str) -> ft.Control:
-        return ft.Row(
+    def _arch_step(self, index: int, title: str, desc: str) -> ui.Control:
+        return ui.Row(
             spacing=14,
             controls=[
-                ft.Container(
+                ui.Container(
                     width=34,
                     height=34,
                     border_radius=17,
                     bgcolor=_ACCENT,
-                    alignment=ft.Alignment(0, 0),
-                    content=ft.Text(
-                        str(index), color="#FFFFFF", weight=ft.FontWeight.W_800, size=14
+                    alignment=ui.Alignment(0, 0),
+                    content=ui.Text(
+                        str(index), color="#FFFFFF", weight=ui.FontWeight.W_800, size=14
                     ),
                 ),
-                ft.Column(
+                ui.Column(
                     spacing=2,
                     controls=[
-                        ft.Text(
+                        ui.Text(
                             title,
                             size=14,
-                            weight=ft.FontWeight.W_700,
+                            weight=ui.FontWeight.W_700,
                             color=self.p["text"],
                         ),
-                        ft.Text(desc, size=12.5, color=self.p["sub"], width=560),
+                        ui.Text(desc, size=12.5, color=self.p["sub"], width=560),
                     ],
                 ),
             ],
         )
 
-    def _architecture(self) -> ft.Control:
+    def _architecture(self) -> ui.Control:
         steps = [
             (
                 "引擎层 engine.py",
@@ -486,25 +486,25 @@ class LandingSite:
                 "控制层 controller",
                 "搜索防抖、分页、选中、文件动作、窗口与快捷键按职责拆分。",
             ),
-            ("界面层 ui", "Flet 声明式组件：f(state) 自动重绘，设计令牌统一视觉。"),
+            ("界面层 ui", "cs-ui 声明式组件（底层 Flet）：f(state) 自动重绘，设计令牌统一视觉。"),
             (
                 "系统集成",
                 "pystray 托盘、pynput 全局热键、WH_MOUSE_LL 滚轮桥，全部守护线程运行。",
             ),
         ]
-        return ft.Container(
+        return ui.Container(
             key="architecture",
             bgcolor=self.p["surface"],
-            padding=ft.Padding(24, 56, 24, 56),
-            content=ft.Column(
+            padding=ui.Padding(24, 56, 24, 56),
+            content=ui.Column(
                 spacing=24,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                horizontal_alignment=ui.CrossAxisAlignment.CENTER,
                 controls=[
                     self._section_title(
                         "ARCHITECTURE", "分层架构", "清晰的单向依赖，便于维护与扩展"
                     ),
                     self._card(
-                        ft.Column(
+                        ui.Column(
                             spacing=16,
                             controls=[
                                 self._arch_step(i + 1, *s) for i, s in enumerate(steps)
@@ -519,39 +519,39 @@ class LandingSite:
     # ------------------------------------------------------------------ 快速开始
     def _quick_step(
         self, index: int, title: str, cmd: str | None, desc: str
-    ) -> ft.Control:
+    ) -> ui.Control:
         body = [
-            ft.Row(
+            ui.Row(
                 spacing=10,
                 controls=[
-                    ft.Text(
-                        f"{index}", size=14, weight=ft.FontWeight.W_800, color=_ACCENT
+                    ui.Text(
+                        f"{index}", size=14, weight=ui.FontWeight.W_800, color=_ACCENT
                     ),
-                    ft.Text(
-                        title, size=14, weight=ft.FontWeight.W_700, color=self.p["text"]
+                    ui.Text(
+                        title, size=14, weight=ui.FontWeight.W_700, color=self.p["text"]
                     ),
                 ],
             ),
-            ft.Text(desc, size=12.5, color=self.p["sub"]),
+            ui.Text(desc, size=12.5, color=self.p["sub"]),
         ]
         if cmd:
             body.append(
-                ft.Container(
+                ui.Container(
                     bgcolor=self.p["surface"],
                     border_radius=8,
-                    padding=ft.Padding(12, 8, 8, 8),
-                    border=ft.Border.all(1, self.p["border"]),
-                    content=ft.Row(
+                    padding=ui.Padding(12, 8, 8, 8),
+                    border=ui.Border.all(1, self.p["border"]),
+                    content=ui.Row(
                         controls=[
-                            ft.Text(
+                            ui.Text(
                                 cmd,
                                 size=12.5,
                                 expand=True,
                                 font_family="Consolas",
                                 color=self.p["text"],
                             ),
-                            ft.IconButton(
-                                ft.Icons.CONTENT_COPY,
+                            ui.IconButton(
+                                ui.Icons.CONTENT_COPY,
                                 icon_size=16,
                                 tooltip="复制命令",
                                 on_click=lambda e, c=cmd: self._copy(c),
@@ -560,12 +560,12 @@ class LandingSite:
                     ),
                 )
             )
-        return self._card(ft.Column(spacing=8, controls=body))
+        return self._card(ui.Column(spacing=8, controls=body))
 
     def _copy(self, cmd: str) -> None:
         self.snack("命令已复制" if _copy_text(cmd) else "复制失败，请手动选择文本复制")
 
-    def _quickstart(self) -> ft.Control:
+    def _quickstart(self) -> ui.Control:
         steps = [
             (
                 1,
@@ -592,15 +592,15 @@ class LandingSite:
                 "产出独立 exe；assets 内放置字体与图标即可离线运行。",
             ),
         ]
-        return ft.Container(
+        return ui.Container(
             key="quickstart",
-            padding=ft.Padding(24, 56, 24, 56),
-            content=ft.Column(
+            padding=ui.Padding(24, 56, 24, 56),
+            content=ui.Column(
                 spacing=20,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                horizontal_alignment=ui.CrossAxisAlignment.CENTER,
                 controls=[
                     self._section_title("QUICK START", "快速开始", "四步跑起来"),
-                    ft.Column(
+                    ui.Column(
                         width=720,
                         spacing=12,
                         controls=[self._quick_step(*s) for s in steps],
@@ -610,30 +610,30 @@ class LandingSite:
         )
 
     # ------------------------------------------------------------------ 页脚
-    def _footer(self) -> ft.Control:
-        return ft.Container(
+    def _footer(self) -> ui.Control:
+        return ui.Container(
             bgcolor=self.p["surface"],
-            padding=ft.Padding(24, 28, 24, 28),
-            border=ft.Border(top=ft.BorderSide(1, self.p["border"])),
-            content=ft.Column(
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            padding=ui.Padding(24, 28, 24, 28),
+            border=ui.Border(top=ui.BorderSide(1, self.p["border"])),
+            content=ui.Column(
+                horizontal_alignment=ui.CrossAxisAlignment.CENTER,
                 spacing=6,
                 controls=[
-                    ft.Row(
-                        alignment=ft.MainAxisAlignment.CENTER,
+                    ui.Row(
+                        alignment=ui.MainAxisAlignment.CENTER,
                         spacing=8,
                         controls=[
-                            ft.Icon(ft.Icons.SPEED, color=_ACCENT, size=18),
-                            ft.Text(
+                            ui.Icon(ui.Icons.SPEED, color=_ACCENT, size=18),
+                            ui.Text(
                                 "CSearch",
                                 size=14,
-                                weight=ft.FontWeight.W_700,
+                                weight=ui.FontWeight.W_700,
                                 color=self.p["text"],
                             ),
                         ],
                     ),
-                    ft.Text(
-                        "Everything 1.5 + Flet 1.0 · 桌面极速文件搜索",
+                    ui.Text(
+                        "Everything 1.5 + cs-ui · 桌面极速文件搜索",
                         size=12,
                         color=self.p["hint"],
                     ),
@@ -642,11 +642,11 @@ class LandingSite:
         )
 
 
-async def main(page: ft.Page) -> None:
+async def main(page: ui.Page) -> None:
     site = LandingSite(page)
     site.setup()
     site.render()
 
 
 if __name__ == "__main__":
-    ft.run(main)  # 默认桌面原生窗口；加 -w 可在浏览器打开
+    ui.run(main)  # 默认桌面原生窗口；加 -w 可在浏览器打开

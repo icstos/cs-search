@@ -8,12 +8,12 @@ from csearch.infra.background_factory import DefaultBackgroundFactory
 from csearch.infra.event_bus import AsyncioEventBus
 from csearch.infra.everything_engine import EverythingEngine
 from csearch.infra.file_ops import SystemFileOps
-from csearch.infra.flet_events import to_key_stroke, to_window_event
-from csearch.infra.flet_window import FletWindowAdapter
 from csearch.infra.json_store import JsonBookmarkStore, JsonConfigStore
-from csearch.infra.notifier import FletNotifier
+from csearch.infra.notifier import UiNotifier
 from csearch.infra.run_history import SqliteRunHistory
 from csearch.infra.tray import PystrayTray
+from csearch.infra.ui_events import to_key_stroke, to_window_event
+from csearch.infra.ui_window import UiWindowAdapter
 from csearch.infra.wheel import LowLevelWheelBridge
 from csearch.infra.win32 import Win32Screen
 
@@ -21,14 +21,14 @@ __all__ = [
     "AsyncioEventBus",
     "DefaultBackgroundFactory",
     "EverythingEngine",
-    "FletNotifier",
-    "FletWindowAdapter",
     "JsonBookmarkStore",
     "JsonConfigStore",
     "LowLevelWheelBridge",
     "PystrayTray",
     "SqliteRunHistory",
     "SystemFileOps",
+    "UiNotifier",
+    "UiWindowAdapter",
     "Win32Screen",
     "to_key_stroke",
     "to_window_event",
