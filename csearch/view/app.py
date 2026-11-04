@@ -69,6 +69,8 @@ def App():
 
     # 根 Stack：内容列 + 右键菜单覆盖层（遮罩/面板按指针坐标绝对定位）。
     # fit=EXPAND 是必须的：松约束下内容列会按内容收缩，右下的空白区点击会落空。
+    # 注意：Stack 没有 bgcolor 字段，整窗底色由 page.bgcolor（bootstrap 里设为
+    # SURFACE_CONTAINER_LOWEST）承担。
     return ui.Stack(
         expand=True,
         fit=ui.StackFit.EXPAND,

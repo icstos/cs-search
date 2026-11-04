@@ -42,6 +42,19 @@ class SettingsViewModel:
         self.state.dialog = None
         self._s.toast(f"全局热键已更新：{combo or '（已禁用）'}")
 
+    # ------------------------------------------------------------------ 外观
+    def toggle_theme(self) -> None:
+        """明暗互切，并持久化。
+
+        切到「与当前看到的相反」而不是在 system/light/dark 三态里轮转：用户点
+        ☀/🌙 的诉求是「立刻变亮（暗）」，切到 system 却看起来没变化是最伤直觉的
+        一种反馈。持久化的是具体模式，所以下次启动行为可预期。
+        """
+        target = "light" if self._s.theme.mode() == "dark" else "dark"
+        self.state.theme_mode = target
+        self._s.theme.apply(target)
+        self._s.config.save_theme(target)
+
     # ------------------------------------------------------------------ 自定义大小
     def confirm_size(self) -> None:
         """确认自定义大小区间（输入单位 MB，转换为字节）。"""

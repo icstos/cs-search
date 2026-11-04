@@ -2,6 +2,10 @@
 
 本层零业务逻辑：行组件由 ``ctx.state`` 派生，交互转发给 ViewModel。
 
+视觉基线（cs-ui / M3）：列表是一块平整的内容面 —— 没有斑马纹，靠「选中态」
+承担位置反馈（与资源管理器、Everything 的桌面直觉一致）；表头用一层稍高的
+容器色与列表区分，列宽分隔条只在悬停/拖拽时浮现。
+
 性能设计（这是本文件最需要维护的部分，改前务必先读）：
 
 flet 的 ``Observable`` 通知是**对象级**的——``state`` 上任何字段变化都会让所有引用
@@ -12,7 +16,7 @@ flet 的 ``Observable`` 通知是**对象级**的——``state`` 上任何字段
 两层记忆化把它压下去：
 
 1. **行控件缓存**（``_build_rows``）：行的有效输入只有「行号 / 条目 / 运行次数 /
-   是否选中 / 各列宽度」五项，任一不变就复用上一次那个**同一个控件对象**。
+   是否选中 / 各列宽度 / 主题模式」六项，任一不变就复用上一次那个**同一个控件对象**。
    于是点击选中只新建 2 行，而不是 200 行；
 2. **整树记忆化**（``Results`` 里的第二个 ``use_memo``）：把返回给上层的整棵树缓存住。
    ``Component.update`` 是以 ``{"_b": <根控件>}`` 形式做 diff 的，这是个**单子字段的
@@ -32,12 +36,34 @@ from csearch.view.bookmarks import BookmarksPanel
 from csearch.view.events import hover_entered, pointer_dx, pointer_position
 from csearch.view.icons import icon_for
 from csearch.view.scroller import results_list_ref
-from csearch.view.theme import ALIGNMENT, TEXT_ALIGN, C, sym_padding
+from csearch.view.theme import (
+    ACCENT,
+    ALIGNMENT,
+    BORDER,
+    FAINT,
+    FS,
+    FW,
+    HEADER,
+    HINT,
+    ON_SELECTED,
+    SELECTED_BG,
+    SP,
+    SUB_ON_SELECTED,
+    SURFACE,
+    TEXT,
+    TEXT_ALIGN,
+    TEXT_SUB,
+    TRACK,
+    danger,
+    radius_all,
+    success,
+    sym_padding,
+)
 from csearch.viewmodel.context import AppContext
 from csearch.viewmodel.state import AppState
 
 # --------------------------------------------------------------------- 行控件缓存
-# 键 = (行号, id(条目), 运行次数, 是否选中, 各列宽度)；值 = (条目, 控件)
+# 键 = (行号, id(条目), 运行次数, 是否选中, 各列宽度, 主题模式)；值 = (条目, 控件)
 # 值里持有条目强引用：既保证 id() 不会被回收后复用，也保证「同一条目」可校验。
 _row_cache: dict[tuple, tuple[ResultItem, ui.Control]] = {}
 
@@ -48,6 +74,16 @@ def _widths_key(state: AppState) -> tuple[int, ...]:
     return tuple(
         widths.get(col, DEFAULT_COL_WIDTHS.get(col, 100)) for col, _, _ in COLUMNS
     )
+
+
+def _mode_key() -> str:
+    """当前实际生效的明暗模式。
+
+    必须进缓存键：个别颜色（运行次数用 ``success`` 语义色）是按模式取值的
+    ``#RRGGBB``，不会随 Flutter 的 ColorScheme 自动重解析。少了这一项，
+    切主题后已有的行会停在旧模式的绿色上。
+    """
+    return ui.core.theme.current_mode()
 
 
 def _clear_row_cache() -> None:
@@ -64,11 +100,12 @@ def _build_rows(ctx: AppContext, widths: tuple[int, ...]) -> list[ui.Control]:
     """
     state = ctx.state
     selected = state.selected
+    mode = _mode_key()
     used: dict[tuple, tuple[ResultItem, ui.Control]] = {}
     rows: list[ui.Control] = []
 
     for index, item in enumerate(state.results):
-        key = (index, id(item), item.run_count, index in selected, widths)
+        key = (index, id(item), item.run_count, index in selected, widths, mode)
         cached = _row_cache.get(key)
         if cached is not None:
             used[key] = cached
@@ -101,18 +138,20 @@ def _build_row(ctx: AppContext, item: ResultItem, index: int) -> ui.Control:
     state = ctx.state
     selected = index in state.selected
     widths = state.row_width_snap or state.col_widths
+    primary = ON_SELECTED if selected else TEXT
+    secondary = SUB_ON_SELECTED if selected else TEXT_SUB
 
     def _cell_content(col: str, align: int) -> ui.Control:
         if col == "name":
             icon_name, icon_color = icon_for(item.name, item.is_folder)
             return ui.Row(
-                spacing=6,
+                spacing=SP["2"],
                 controls=[
                     ui.Icon(icon_name, size=16, color=icon_color),
                     ui.Text(
                         item.name,
-                        size=13,
-                        color=C.ON_PRIMARY if selected else C.TEXT,
+                        size=FS["body"],
+                        color=primary,
                         no_wrap=True,
                         expand=True,
                         overflow=ui.TextOverflow.ELLIPSIS,
@@ -122,32 +161,32 @@ def _build_row(ctx: AppContext, item: ResultItem, index: int) -> ui.Control:
         if col == "path":
             return ui.Text(
                 item.path,
-                size=12,
-                color=C.TEXT_SUB,
+                size=FS["small"],
+                color=secondary,
                 no_wrap=True,
                 overflow=ui.TextOverflow.ELLIPSIS,
             )
         if col == "size":
             return ui.Text(
                 item.size_str,
-                size=12,
-                color=C.TEXT_SUB,
+                size=FS["small"],
+                color=secondary,
                 text_align=TEXT_ALIGN[align],
                 no_wrap=True,
             )
         if col == "mtime":
             return ui.Text(
                 item.date_str,
-                size=12,
-                color=C.TEXT_SUB,
+                size=FS["small"],
+                color=secondary,
                 text_align=TEXT_ALIGN[align],
                 no_wrap=True,
             )
         return ui.Text(  # run_count
             str(item.run_count) if item.run_count else "",
-            size=12,
-            color=C.SUCCESS if item.run_count else C.TEXT_FAINT,
-            weight=ui.FontWeight.W_600 if item.run_count else ui.FontWeight.W_400,
+            size=FS["small"],
+            color=success() if item.run_count else FAINT,
+            weight=FW["semibold"] if item.run_count else FW["regular"],
             text_align=TEXT_ALIGN[align],
             no_wrap=True,
         )
@@ -163,7 +202,7 @@ def _build_row(ctx: AppContext, item: ResultItem, index: int) -> ui.Control:
                     on_tap=lambda e, c=col: ctx.selection.on_row_click(index, c),
                     content=ui.Container(
                         width=width,
-                        padding=sym_padding(8, 6),
+                        padding=sym_padding(SP["2"], SP["1"]),
                         alignment=ALIGNMENT[align],
                         content=_cell_content(col, align),
                     ),
@@ -177,9 +216,7 @@ def _build_row(ctx: AppContext, item: ResultItem, index: int) -> ui.Control:
         on_secondary_tap_down=lambda e: ctx.menu.open_row(index, *pointer_position(e)),
         content=ui.Container(
             height=ROW_HEIGHT,
-            bgcolor=C.PRIMARY_CONTAINER
-            if selected
-            else (C.SURFACE_ALT if index % 2 else C.SURFACE),
+            bgcolor=SELECTED_BG if selected else ui.Colors.TRANSPARENT,
             content=ui.Row(spacing=0, controls=_cells()),
         ),
     )
@@ -197,12 +234,12 @@ def _header_cell(ctx: AppContext, col: str, title: str, width: int) -> ui.Contro
         mouse_cursor=ui.MouseCursor.CLICK,
         content=ui.Container(
             width=width,
-            padding=sym_padding(8, 6),
+            padding=sym_padding(SP["2"], SP["1"]),
             content=ui.Text(
                 f"{title}{arrow}",
-                size=12,
-                weight=ui.FontWeight.W_600,
-                color=C.PRIMARY if active else C.TEXT_SUB,
+                size=FS["small"],
+                weight=FW["semibold"],
+                color=ACCENT if active else TEXT_SUB,
                 no_wrap=True,
             ),
         ),
@@ -221,7 +258,8 @@ def _separator(ctx: AppContext, col: str) -> ui.Control:
                 ui.Container(
                     width=2,
                     expand=True,
-                    bgcolor=C.TEXT_HINT if active else C.DIVIDER,
+                    bgcolor=TRACK if active else ui.Colors.TRANSPARENT,
+                    border_radius=radius_all(1),
                 )
             ],
         ),
@@ -255,16 +293,10 @@ def _table_header(ctx: AppContext) -> ui.Control:
         state.col_widths.get(c, DEFAULT_COL_WIDTHS.get(c, 100)) for c, _, _ in COLUMNS
     )
     return ui.Container(
-        height=32,
-        bgcolor=C.HEADER_BG,
-        border=ui.Border(
-            top=ui.BorderSide(1, C.BORDER), bottom=ui.BorderSide(1, C.BORDER)
-        ),
-        content=ui.Row(
-            spacing=0,
-            width=total + 40,
-            controls=cells,
-        ),
+        height=34,
+        bgcolor=HEADER,
+        border=ui.Border(bottom=ui.BorderSide(1, BORDER)),
+        content=ui.Row(spacing=0, width=total + 40, controls=cells),
     )
 
 
@@ -272,18 +304,24 @@ def _table_header(ctx: AppContext) -> ui.Control:
 def _engine_down_card(ctx: AppContext) -> ui.Control:
     return ui.Container(
         expand=True,
+        bgcolor=SURFACE,
         alignment=ui.Alignment(0, 0),
         content=ui.Column(
             alignment=ui.MainAxisAlignment.CENTER,
             horizontal_alignment=ui.CrossAxisAlignment.CENTER,
-            spacing=12,
+            spacing=SP["3"],
             controls=[
-                ui.Icon(ui.Icons.ERROR_OUTLINE, size=48, color=C.DANGER),
-                ui.Text("Everything 服务未运行", size=16, weight=ui.FontWeight.W_600),
+                ui.Icon(ui.Icons.DESKTOP_ACCESS_DISABLED_OUTLINED, size=44, color=danger()),
                 ui.Text(
-                    ctx.state.engine_msg or "请启动 Everything 后使用",
-                    size=13,
-                    color=C.TEXT_SUB,
+                    "Everything 服务未运行",
+                    size=FS["title"],
+                    weight=FW["semibold"],
+                    color=TEXT,
+                ),
+                ui.Text(
+                    ctx.state.engine_msg or "启动 Everything 后即可开始搜索",
+                    size=FS["body"],
+                    color=TEXT_SUB,
                 ),
                 ui.FilledButton(
                     "一键启动 Everything",
@@ -302,10 +340,15 @@ def _empty_hint() -> ui.Control:
         content=ui.Column(
             alignment=ui.MainAxisAlignment.CENTER,
             horizontal_alignment=ui.CrossAxisAlignment.CENTER,
-            spacing=8,
+            spacing=SP["2"],
             controls=[
-                ui.Icon(ui.Icons.SEARCH_OFF, size=48, color=C.TEXT_HINT),
-                ui.Text("无匹配结果", size=14, color=C.TEXT_HINT),
+                ui.Icon(ui.Icons.SEARCH_OFF, size=40, color=HINT),
+                ui.Text("没有匹配的文件", size=FS["subtitle"], color=TEXT_SUB),
+                ui.Text(
+                    "换个更短的关键词，或放宽筛选条件",
+                    size=FS["small"],
+                    color=HINT,
+                ),
             ],
         ),
     )
@@ -330,6 +373,8 @@ def Results(ctx: AppContext):
             # 拖拽期间 col_widths 每帧都在变，若直接依赖它就会每帧整批重建所有行。
             # 生效列宽在拖拽时取低频快照（row_width_snap），松手才对齐最终值。
             widths_key,
+            # 明暗切换要重算行的语义色（见 _mode_key）
+            state.theme_mode,
         ],
     )
 
@@ -360,7 +405,7 @@ def Results(ctx: AppContext):
             controls=rows,
             expand=True,
             spacing=0,
-            padding=ui.Padding(0, 4, 0, 4),
+            padding=ui.Padding(0, SP["1"], 0, SP["1"]),
             item_extent=ROW_HEIGHT,  # 固定行高：懒加载精确估算滚动范围
             build_controls_on_demand=True,  # 虚拟构建，仅渲染可视行，长列表高性能
             scroll=ui.Scrollbar(
@@ -376,8 +421,11 @@ def Results(ctx: AppContext):
         # 症状极具迷惑性：表头在 Stack 外面，点击排序一切正常，只有结果行毫无反应。
         overlay: list[ui.Control] = []
         if state.searching:
+            # 2px 顶部进度条：不遮内容、不改变布局高度（比转圈更贴合列表语义）
             overlay.append(
-                ui.ProgressRing(width=20, height=20, stroke_width=2, left=12, top=8)
+                ui.ProgressBar(
+                    left=0, top=0, right=0, height=2, color=ACCENT, bar_height=2
+                )
             )
         if not state.searching and not rows:
             overlay.append(_empty_hint())
@@ -389,7 +437,7 @@ def Results(ctx: AppContext):
                 _table_header(ctx),
                 ui.Container(
                     expand=True,
-                    bgcolor=C.SURFACE,
+                    bgcolor=SURFACE,
                     content=ui.Stack(expand=True, controls=[list_view, *overlay]),
                 ),
             ],
@@ -411,5 +459,6 @@ def Results(ctx: AppContext):
             state.sort_col,
             state.sort_desc,
             state.bookmarks,
+            state.theme_mode,
         ],
     )

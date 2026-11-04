@@ -26,7 +26,19 @@ from csearch.models.constants import (
     MENU_WIDTH,
 )
 from csearch.models.enums import MenuKind
-from csearch.view.theme import C, radius_all, sym_padding
+from csearch.view.theme import (
+    BORDER,
+    FS,
+    HINT,
+    HOVER,
+    SP,
+    SURFACE,
+    TEXT,
+    danger,
+    floating_shadow,
+    radius_all,
+    sym_padding,
+)
 from csearch.viewmodel.context import AppContext
 
 _ITEM_WIDTH = MENU_WIDTH - MENU_PANEL_PADDING * 2
@@ -37,28 +49,32 @@ def _MenuItem(
     label: str,
     on_select: Callable[[], None],
     hint: str = "",
-    danger: bool = False,
+    destructive: bool = False,
 ) -> ui.Control:
-    """单条菜单项（hover 高亮 + 点击分发）。"""
+    """单条菜单项（hover 高亮 + 点击分发）。
+
+    破坏性操作用 ``danger`` 语义色，而不是加粗或加图标 —— 颜色是最省注意力的
+    风险提示，且不会让菜单项的高度/对齐发生变化。
+    """
     hover, set_hover = ui.use_state(False)
     trailing: list[ui.Control] = (
-        [ui.Text(hint, size=11, color=C.TEXT_HINT, no_wrap=True)] if hint else []
+        [ui.Text(hint, size=FS["caption"], color=HINT, no_wrap=True)] if hint else []
     )
     return ui.Container(
         width=_ITEM_WIDTH,
         height=MENU_ITEM_HEIGHT,
-        padding=sym_padding(12, 0),
-        border_radius=radius_all(4),
-        bgcolor=C.PRIMARY_CONTAINER if hover else None,
+        padding=sym_padding(SP["3"], 0),
+        border_radius=radius_all(6),
+        bgcolor=HOVER if hover else ui.Colors.TRANSPARENT,
         on_click=lambda e: on_select(),
         on_hover=lambda e: set_hover(e.data == "true"),
         content=ui.Row(
-            spacing=8,
+            spacing=SP["2"],
             controls=[
                 ui.Text(
                     label,
-                    size=13,
-                    color=C.DANGER if danger else C.TEXT,
+                    size=FS["body"],
+                    color=danger() if destructive else TEXT,
                     expand=True,
                     no_wrap=True,
                     overflow=ui.TextOverflow.ELLIPSIS,
@@ -84,6 +100,14 @@ def _action(ctx: AppContext, fn: Callable[[], None]) -> Callable[[], None]:
     return run
 
 
+def _separator() -> ui.Control:
+    return ui.Container(
+        height=1,
+        bgcolor=BORDER,
+        margin=ui.Padding(0, SP["1"], 0, SP["1"]),
+    )
+
+
 # --------------------------------------------------------------------- 结果行菜单
 def _result_items(ctx: AppContext) -> list[ui.Control]:
     """结果行菜单项：动作在点击瞬间读取 state.menu_row 对应的目标行。"""
@@ -103,8 +127,9 @@ def _result_items(ctx: AppContext) -> list[ui.Control]:
         _MenuItem(
             "打开文件夹",
             _action(ctx, lambda: asyncio.create_task(ctx.actions.open_folder(index))),
-            "双击路径列",
+            "双击路径",
         ),
+        _separator(),
         _MenuItem(
             "复制完整路径",
             _action(ctx, lambda: asyncio.create_task(ctx.actions.copy_paths())),
@@ -118,11 +143,12 @@ def _result_items(ctx: AppContext) -> list[ui.Control]:
             "设置运行次数…",
             _action(ctx, lambda: ctx.actions.request_run_count(index)),
         ),
+        _separator(),
         _MenuItem(
             "删除到回收站",
             _action(ctx, lambda: asyncio.create_task(ctx.actions.delete_selected())),
             "Delete",
-            danger=True,
+            destructive=True,
         ),
     ]
 
@@ -138,24 +164,26 @@ def _bookmark_items(ctx: AppContext) -> list[ui.Control]:
         _MenuItem(
             "重命名", _action(ctx, lambda: ctx.bookmarks.open_rename_dialog(bookmark))
         ),
+        _separator(),
         _MenuItem(
             "删除",
             _action(ctx, lambda: ctx.bookmarks.delete(bookmark)),
-            danger=True,
+            destructive=True,
         ),
     ]
 
 
 # --------------------------------------------------------------------- 覆盖层
 def _panel(ctx: AppContext, items: list[ui.Control]) -> ui.Control:
-    """菜单面板：按指针坐标绝对定位。"""
+    """菜单面板：按指针坐标绝对定位，浮在内容之上（阴影 + 描边）。"""
     return ui.Container(
         left=ctx.state.menu_x,
         top=ctx.state.menu_y,
         width=MENU_WIDTH,
-        bgcolor=C.SURFACE,
-        border=ui.Border.all(1, C.BORDER_STRONG),
-        border_radius=radius_all(6),
+        bgcolor=SURFACE,
+        border=ui.Border.all(1, BORDER),
+        border_radius=radius_all(8),
+        shadow=floating_shadow(2),
         padding=ui.Padding(
             MENU_PANEL_PADDING, MENU_PANEL_PADDING, MENU_PANEL_PADDING, MENU_PANEL_PADDING
         ),

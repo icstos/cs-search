@@ -61,6 +61,7 @@ def _build_services(page: ui.Page) -> Any:
         SqliteRunHistory,
         SystemFileOps,
         UiNotifier,
+        UiTheme,
         UiWindowAdapter,
         Win32Screen,
     )
@@ -105,8 +106,25 @@ def _build_services(page: ui.Page) -> Any:
         bus=bus,
         window=UiWindowAdapter(page),
         screen=screen,
+        theme=UiTheme(page),
         notifier=UiNotifier(page),
     )
+
+
+def _apply_theme(page: ui.Page, mode: str) -> None:
+    """把 cs-ui 的主题运行时挂到页面上（一个种子色 → 整套 M3 色板）。
+
+    走 ``ui.apply_theme`` 而不是手工拼 ``ui.Theme``：滚动条（桌面端 4px、悬停才显形）、
+    弹出菜单、路由转场这些细节库里已经按桌面调好，自己写一份必然逐渐跑偏。
+
+    ``mode`` 来自配置（system / light / dark）。``system`` 时由库监听
+    ``page.platform_brightness`` 跟随系统，界面无需再关心。
+    """
+    state = ui.theme_state()
+    state.primary = ui.PRIMARY_SEEDS["blue"]
+    state.font_family = FONT_FAMILY
+    state.set_mode(mode)
+    ui.apply_theme(page, state)
 
 
 def _configure_page(page: ui.Page, cfg: Any) -> None:
@@ -114,14 +132,9 @@ def _configure_page(page: ui.Page, cfg: Any) -> None:
     page.title = APP_TITLE
     page.padding = 0
     page.spacing = 0
-    page.bgcolor = "#F7F8FA"
     page.fonts = {FONT_FAMILY: FONT_ASSET}
-    page.theme = ui.Theme(
-        font_family=FONT_FAMILY,
-        color_scheme_seed="#1A73E8",
-        use_material3=True,
-    )
-    page.theme_mode = ui.ThemeMode.LIGHT
+    page.bgcolor = ui.Colors.SURFACE_CONTAINER_LOWEST
+    _apply_theme(page, cfg.theme)
 
     geometry = cfg.window
     page.window.title = APP_TITLE
@@ -148,15 +161,24 @@ def _Splash():
     """预热期间的首帧：极轻量，只为让窗口立刻有内容可画。"""
     return ui.Container(
         expand=True,
-        bgcolor="#F7F8FA",
+        bgcolor=ui.Colors.SURFACE_CONTAINER_LOWEST,
         alignment=ui.Alignment(0, 0),
         content=ui.Column(
             alignment=ui.MainAxisAlignment.CENTER,
             horizontal_alignment=ui.CrossAxisAlignment.CENTER,
             spacing=12,
             controls=[
-                ui.ProgressRing(width=22, height=22, stroke_width=2.4),
-                ui.Text("正在启动 CSearch…", size=13, color="#5F6368"),
+                ui.ProgressRing(
+                    width=22,
+                    height=22,
+                    stroke_width=2.4,
+                    color=ui.Colors.PRIMARY,
+                ),
+                ui.Text(
+                    "正在启动 CSearch…",
+                    size=13,
+                    color=ui.Colors.ON_SURFACE_VARIANT,
+                ),
             ],
         ),
     )

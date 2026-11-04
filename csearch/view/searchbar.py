@@ -1,6 +1,10 @@
-"""顶部搜索行：搜索框 + 分类/时间/大小筛选 + 正则开关 + 书签/刷新/热键。
+"""顶部搜索行：搜索框 + 分类/时间/大小筛选 + 正则开关 + 书签/刷新/设置。
 
 本层零业务逻辑：渲染由 ``ctx.state`` 派生，交互一律转发给 ViewModel。
+
+视觉基线：搜索框是唯一的「主输入」，用 M3 描边式 + 主色聚焦环把它顶出来；
+筛选器退成无边框的文字按钮（带类型图标），动作按钮保持图标，整条工具栏只有
+一个视觉重心。间距与字号全部取自 ``theme`` 的令牌，不写裸数字。
 """
 
 from __future__ import annotations
@@ -11,7 +15,24 @@ import ui
 
 from csearch.models.constants import CATEGORIES, SIZE_RANGES, TIME_RANGES
 from csearch.models.enums import Focus
-from csearch.view.theme import C, bottom_border, sym_padding
+from csearch.view.theme import (
+    ACCENT,
+    ACCENT_BG,
+    BORDER,
+    FS,
+    FW,
+    PANEL,
+    RAD,
+    SP,
+    SURFACE,
+    TEXT,
+    TEXT_SUB,
+    TRACK,
+    bottom_border,
+    field_border,
+    radius_all,
+    sym_padding,
+)
 from csearch.viewmodel.context import AppContext
 from csearch.viewmodel.state import AppState
 
@@ -19,28 +40,33 @@ _TOOLTIPS = {"category": "文件分类", "time": "修改时间", "size": "文件
 
 
 def _regex_toggle(ctx: AppContext) -> ui.Control:
-    """正则开关胶囊：高亮表示已开启。"""
+    """正则开关：开启时用主色容器填充，关闭时是安静的描边胶囊。"""
     on = ctx.state.use_regex
     return ui.TextButton(
-        content=".*",
+        content="正则",
         tooltip=(
             "正则搜索：已开启，点击关闭（按正则匹配文件名）"
             if on
             else r"正则搜索：点击开启（参考 Everything，如 ^report.*\.xlsx$）"
         ),
         style=ui.ButtonStyle(
-            color=C.PRIMARY if on else C.TEXT_SUB,
-            bgcolor=C.PRIMARY_CONTAINER if on else C.HEADER_BG,
-            padding=ui.Padding(10, 2, 10, 2),
+            color=ACCENT if on else TEXT_SUB,
+            bgcolor=ACCENT_BG if on else ui.Colors.TRANSPARENT,
+            padding=sym_padding(SP["2"], SP["1"]),
             shape=ui.StadiumBorder(),
-            side=ui.BorderSide(1, C.PRIMARY if on else C.BORDER_STRONG),
+            side=ui.BorderSide(1, ACCENT if on else BORDER),
             text_style=ui.TextStyle(
-                size=12,
-                weight=ui.FontWeight.W_600 if on else ui.FontWeight.W_500,
+                size=FS["small"],
+                weight=FW["semibold"] if on else FW["medium"],
             ),
         ),
         on_click=lambda e: ctx.search.toggle_regex(),
     )
+
+
+def _divider() -> ui.Control:
+    """工具栏内的分组竖线（比整条 VerticalDivider 轻，不参与布局分配）。"""
+    return ui.Container(width=1, height=18, bgcolor=TRACK, margin=sym_padding(2, 0))
 
 
 def _dropdown(
@@ -54,10 +80,28 @@ def _dropdown(
         value=value,
         width=width,
         dense=True,
-        text_size=12,
+        text_size=FS["small"],
+        text_style=ui.TextStyle(size=FS["small"], color=TEXT),
+        # 无边框 + 透明底：筛选是「可选修饰」，不该和搜索框抢注意力。
+        # 也刻意不放 leading_icon：M3 下拉的前导图标会吃掉 ~40px，窄工具栏里
+        # 直接导致选中文本被裁成一个字（实测「全部」只剩「全」）。
+        filled=False,
+        border=ui.NoInputBorder(),
+        border_radius=radius_all(RAD["md"]),
+        content_padding=ui.Padding(SP["2"], 0, SP["1"], 0),
         options=[ui.DropdownOption(key=k, text=v) for k, v in options],
         on_select=lambda e: ctx.search.on_filter(field_name, e.control.value),
         tooltip=_TOOLTIPS[field_name],
+    )
+
+
+def _icon_action(icon: str, tooltip: str, on_click) -> ui.Control:
+    return ui.IconButton(
+        icon=icon,
+        icon_size=18,
+        icon_color=TEXT_SUB,
+        tooltip=tooltip,
+        on_click=on_click,
     )
 
 
@@ -82,6 +126,9 @@ def _search_field(ctx: AppContext, text: str) -> ui.TextField:
     依赖不变 → 复用实例 → flet 走「原地比较」，``_dirty`` 为空 → 零下发，
     IME 组合完全不受干扰。新建时机仅有：首次挂载、焦点域切换、正则开关切换、
     程序化写入（``state.query_set_seq`` 推进）。
+
+    同理，**不要**在搜索框上加「按输入内容显隐」的后缀控件（例如清空按钮）：
+    那会逼着 memo 依赖 ``state.query``，每次敲键都重建一次工具栏。清空走 Esc。
     """
     state = ctx.state
     return ui.TextField(
@@ -89,13 +136,16 @@ def _search_field(ctx: AppContext, text: str) -> ui.TextField:
         hint_text=(
             r"正则模式：输入正则表达式匹配文件名，如 ^report.*\.xlsx$"
             if state.use_regex
-            else "搜索文件名，支持 Everything 语法（ext: / content: / 正则…）"
+            else "搜索文件名 · 支持 ext: / content: / 正则"
         ),
         expand=True,
         dense=True,
-        # 单个 NoInputBorder 对默认/聚焦/悬停全部状态生效，保持扁平无描边
-        border=ui.NoInputBorder(),
-        text_size=14,
+        text_size=FS["subtitle"],
+        filled=True,
+        fill_color=SURFACE,
+        prefix_icon=ui.Icon(ui.Icons.SEARCH, size=18, color=TEXT_SUB),
+        border=field_border(RAD["lg"]),
+        content_padding=ui.Padding(0, SP["2"], SP["3"], SP["2"]),
         ignore_up_down_keys=True,
         autofocus=state.focus == Focus.SEARCH,
         # 唤回窗口时全选已有内容（一次性，输入即可覆盖旧查询）
@@ -136,35 +186,36 @@ def SearchBar(ctx: AppContext):
 
     def _build() -> ui.Control:
         return ui.Container(
-            padding=sym_padding(12, 8),
-            bgcolor=C.SURFACE,
+            padding=ui.Padding(SP["3"], SP["2"], SP["3"], SP["2"]),
+            bgcolor=PANEL,
             border=bottom_border(),
             content=ui.Row(
-                spacing=8,
+                spacing=SP["2"],
                 vertical_alignment=ui.CrossAxisAlignment.CENTER,
                 controls=[
-                    ui.Icon(ui.Icons.SEARCH, color=C.TEXT_SUB, size=20),
                     search_field,
                     _regex_toggle(ctx),
-                    _dropdown(ctx, "category", state.category, CATEGORIES, 96),
-                    _dropdown(ctx, "time", state.time_range, TIME_RANGES, 92),
-                    _dropdown(ctx, "size", state.size_range, SIZE_RANGES, 110),
-                    ui.IconButton(
-                        ui.Icons.BOOKMARK_ADD, icon_size=20,
-                        tooltip="保存当前搜索条件为书签",
-                        on_click=lambda e: ctx.bookmarks.open_save_dialog(),
+                    _divider(),
+                    _dropdown(ctx, "category", state.category, CATEGORIES, 124),
+                    _dropdown(ctx, "time", state.time_range, TIME_RANGES, 120),
+                    _dropdown(ctx, "size", state.size_range, SIZE_RANGES, 124),
+                    _divider(),
+                    _icon_action(
+                        ui.Icons.BOOKMARK_ADD,
+                        "保存当前搜索条件为书签",
+                        lambda e: ctx.bookmarks.open_save_dialog(),
                     ),
-                    ui.IconButton(
-                        ui.Icons.REFRESH, icon_size=20,
-                        tooltip="刷新 (F5)",
-                        on_click=lambda e: asyncio.create_task(
+                    _icon_action(
+                        ui.Icons.REFRESH,
+                        "刷新 (F5)",
+                        lambda e: asyncio.create_task(
                             ctx.search.run_search(keep_selection=True)
                         ),
                     ),
-                    ui.IconButton(
-                        ui.Icons.SETTINGS, icon_size=20,
-                        tooltip="设置全局热键",
-                        on_click=lambda e: ctx.settings.open_hotkey(),
+                    _icon_action(
+                        ui.Icons.SETTINGS,
+                        "设置全局热键",
+                        lambda e: ctx.settings.open_hotkey(),
                     ),
                 ],
             ),

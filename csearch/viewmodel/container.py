@@ -8,7 +8,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from csearch.models.ports import EventBus, Notifier, Screen, ScrollTarget, Window
+from csearch.models.ports import (
+    EventBus,
+    Notifier,
+    Screen,
+    ScrollTarget,
+    ThemePort,
+    Window,
+)
 from csearch.service.bookmarks import BookmarkService
 from csearch.service.config import ConfigService
 from csearch.service.files import FileService
@@ -33,6 +40,7 @@ class Services:
     bus: EventBus
     window: Window
     screen: Screen
+    theme: ThemePort
 
     # ---- 由 view 层注册的运行时端口 ----
     notifier: Notifier | None = None       # 轻提示（SnackBar）

@@ -16,7 +16,7 @@ from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Any
 
-from csearch.models.constants import DEFAULT_HOTKEY
+from csearch.models.constants import DEFAULT_HOTKEY, DEFAULT_THEME, THEME_MODES
 from csearch.models.entities import AppConfig, Bookmark, WindowGeometry
 
 _DIR = Path(os.environ.get("APPDATA", Path.home())) / "CSearch"
@@ -74,10 +74,13 @@ class JsonConfigStore:
             maximized=bool(win.get("maximized", False)),
         )
         hotkey = str(raw.get("hotkey", DEFAULT_HOTKEY)).strip() or DEFAULT_HOTKEY
+        theme = str(raw.get("theme", DEFAULT_THEME)).strip().lower()
         return AppConfig(
             window=geo,
             hotkey=hotkey,
             start_hidden=bool(raw.get("start_hidden", False)),
+            # 非法值（手改配置 / 旧版本残留）一律退回跟随系统，不让界面卡在未知模式
+            theme=theme if theme in THEME_MODES else DEFAULT_THEME,
         )
 
     def save_window(self, geometry: WindowGeometry) -> None:
@@ -88,6 +91,11 @@ class JsonConfigStore:
     def save_hotkey(self, hotkey: str) -> None:
         raw = _load(_CFG_PATH)
         raw["hotkey"] = hotkey
+        _save(_CFG_PATH, raw)
+
+    def save_theme(self, theme: str) -> None:
+        raw = _load(_CFG_PATH)
+        raw["theme"] = theme
         _save(_CFG_PATH, raw)
 
 

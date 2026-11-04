@@ -13,6 +13,7 @@ from csearch.infra.notifier import UiNotifier
 from csearch.infra.run_history import SqliteRunHistory
 from csearch.infra.tray import PystrayTray
 from csearch.infra.ui_events import to_key_stroke, to_window_event
+from csearch.infra.ui_theme import UiTheme
 from csearch.infra.ui_window import UiWindowAdapter
 from csearch.infra.wheel import LowLevelWheelBridge
 from csearch.infra.win32 import Win32Screen
@@ -28,6 +29,7 @@ __all__ = [
     "SqliteRunHistory",
     "SystemFileOps",
     "UiNotifier",
+    "UiTheme",
     "UiWindowAdapter",
     "Win32Screen",
     "to_key_stroke",

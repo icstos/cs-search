@@ -11,10 +11,11 @@ from typing import TYPE_CHECKING
 
 from csearch.models.constants import (
     MENU_BOOKMARK_ITEM_COUNT,
-    MENU_CLAMP_PADDING,
-    MENU_ITEM_HEIGHT,
+    MENU_BOOKMARK_SEPARATOR_COUNT,
     MENU_ROW_ITEM_COUNT,
+    MENU_ROW_SEPARATOR_COUNT,
     MENU_WIDTH,
+    menu_height,
 )
 from csearch.models.entities import Bookmark
 from csearch.models.enums import Focus, MenuKind
@@ -32,9 +33,8 @@ class MenuViewModel:
         self.state = ctx.state
 
     # ------------------------------------------------------------------ 坐标
-    def _clamp(self, x: float, y: float, item_count: int) -> tuple[float, float]:
-        """菜单贴近右/下边缘时拉回可视区。"""
-        height = item_count * MENU_ITEM_HEIGHT + MENU_CLAMP_PADDING
+    def _clamp(self, x: float, y: float, height: float) -> tuple[float, float]:
+        """菜单贴近右/下边缘时拉回可视区（``height`` 为面板实际高度）。"""
         try:
             width, page_height = self._s.window.viewport_size()
         except Exception:  # noqa: BLE001
@@ -53,7 +53,7 @@ class MenuViewModel:
         self.state.menu_kind = MenuKind.RESULT_ROW
         self.state.menu_row = index
         self.state.menu_x, self.state.menu_y = self._clamp(
-            x, y, MENU_ROW_ITEM_COUNT
+            x, y, menu_height(MENU_ROW_ITEM_COUNT, MENU_ROW_SEPARATOR_COUNT)
         )
 
     def open_bookmark(self, bookmark: Bookmark, x: float, y: float) -> None:
@@ -61,7 +61,7 @@ class MenuViewModel:
         self.state.menu_kind = MenuKind.BOOKMARK
         self.state.menu_bookmark = bookmark.id
         self.state.menu_x, self.state.menu_y = self._clamp(
-            x, y, MENU_BOOKMARK_ITEM_COUNT
+            x, y, menu_height(MENU_BOOKMARK_ITEM_COUNT, MENU_BOOKMARK_SEPARATOR_COUNT)
         )
 
     def close(self) -> None:

@@ -75,6 +75,7 @@ class AppConfig:
     window: WindowGeometry
     hotkey: str
     start_hidden: bool = False
+    theme: str = "system"  # system / light / dark
 
 
 @dataclass(frozen=True)

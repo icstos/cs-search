@@ -34,6 +34,11 @@ class AppState:
     sort_col: str = "name"
     sort_desc: bool = False
 
+    # ---- 外观 ----
+    # 明暗模式（system / light / dark）。只作为「重绘触发器 + 持久化来源」：
+    # 实际生效模式由 cs-ui 的主题运行时解析（system 时跟随系统亮度）。
+    theme_mode: str = "system"
+
     # ---- 结果 ----
     results: list[ResultItem] = field(default_factory=list)
     total: int = 0

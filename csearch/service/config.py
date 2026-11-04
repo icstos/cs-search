@@ -30,3 +30,6 @@ class ConfigService:
 
     def save_hotkey(self, hotkey: str) -> None:
         self._store.save_hotkey(hotkey)
+
+    def save_theme(self, theme: str) -> None:
+        self._store.save_theme(theme)

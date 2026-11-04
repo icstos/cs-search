@@ -11,6 +11,11 @@ FONT_FAMILY = "AlibabaPuHuiTi"
 FONT_ASSET = "fonts/AlibabaPuHuiTi-3-55-Regular.otf"
 ICON_ASSET = "icon_windows.ico"
 
+# --------------------------------------------------------------------- 主题
+#: 明暗模式取值；"system" 跟随 Windows 的应用主题
+THEME_MODES: tuple[str, ...] = ("system", "light", "dark")
+DEFAULT_THEME = "system"
+
 # --------------------------------------------------------------------- 全局热键
 DEFAULT_HOTKEY = "alt+space"
 #: 修饰键写法（含常见别名）；判定「热键是否为空转」的唯一依据
@@ -116,7 +121,7 @@ CATEGORIES: list[tuple[str, str]] = [
 ]
 
 TIME_RANGES: list[tuple[str, str]] = [
-    ("any", "不限"),
+    ("any", "任意时间"),
     ("today", "今天"),
     ("week", "本周"),
     ("month", "本月"),
@@ -124,7 +129,7 @@ TIME_RANGES: list[tuple[str, str]] = [
 ]
 
 SIZE_RANGES: list[tuple[str, str]] = [
-    ("any", "不限"),
+    ("any", "任意大小"),
     ("lt1mb", "小于 1MB"),
     ("1mb-100mb", "1MB - 100MB"),
     ("100mb-1gb", "100MB - 1GB"),
@@ -137,9 +142,23 @@ SIZE_RANGES: list[tuple[str, str]] = [
 MENU_WIDTH = 220
 MENU_ITEM_HEIGHT = 30
 MENU_PANEL_PADDING = 4  # 面板四周内边距（渲染）
-MENU_CLAMP_PADDING = 8  # 贴边夹紧时的高度余量
 MENU_ROW_ITEM_COUNT = 7  # 结果行菜单项数
 MENU_BOOKMARK_ITEM_COUNT = 2  # 书签菜单项数
+MENU_SEPARATOR_HEIGHT = 9  # 分隔线：1px 线 + 上下各 1 格外边距
+MENU_ROW_SEPARATOR_COUNT = 2
+MENU_BOOKMARK_SEPARATOR_COUNT = 1
+
+
+def menu_height(item_count: int, separator_count: int = 0) -> float:
+    """菜单面板的实际像素高度（贴边夹紧用）。
+
+    分隔线也要算进去：少算十几像素，菜单的边缘就会压到屏幕外。
+    """
+    return (
+        item_count * MENU_ITEM_HEIGHT
+        + separator_count * MENU_SEPARATOR_HEIGHT
+        + MENU_PANEL_PADDING * 2
+    )
 
 # --------------------------------------------------------------------- 窗口
 MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT = 760, 480

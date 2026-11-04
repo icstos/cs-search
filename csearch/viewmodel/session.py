@@ -39,6 +39,7 @@ class SessionViewModel:
         self.state.index_ready = status.index_ready
         self.state.engine_version = self._s.search.version
         self.state.bookmarks = self._s.bookmarks.load()
+        self.state.theme_mode = self._s.config.load().theme
 
         # 说明：外部文件变更的实时同步由 ctx.search.sync_loop() 常驻承担
         # （见 view/app.py 的任务装配），此处无需接线。

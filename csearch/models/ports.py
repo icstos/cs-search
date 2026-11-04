@@ -99,6 +99,8 @@ class ConfigStore(Protocol):
 
     def save_hotkey(self, hotkey: str) -> None: ...
 
+    def save_theme(self, theme: str) -> None: ...
+
 
 @runtime_checkable
 class BookmarkStore(Protocol):
@@ -206,6 +208,17 @@ class Notifier(Protocol):
     """轻提示出口（SnackBar）：由 view 层注册实现，viewmodel 只表达语义。"""
 
     def notify(self, message: str) -> None: ...
+
+
+@runtime_checkable
+class ThemePort(Protocol):
+    """主题出口：viewmodel 只表达「要切到哪个模式」，不接触 Page / 控件。"""
+
+    def mode(self) -> str:
+        """当前**实际生效**的模式（``system`` 已解析成 ``light`` / ``dark``）。"""
+        ...
+
+    def apply(self, mode: str) -> None: ...
 
 
 @runtime_checkable
