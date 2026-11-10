@@ -30,7 +30,12 @@ import asyncio
 
 import ui
 
-from csearch.models.constants import COLUMNS, DEFAULT_COL_WIDTHS, ROW_HEIGHT
+from csearch.models.constants import (
+    COLUMNS,
+    DEFAULT_COL_WIDTHS,
+    HEADER_HEIGHT,
+    ROW_HEIGHT,
+)
 from csearch.models.entities import ResultItem
 from csearch.view.bookmarks import BookmarksPanel
 from csearch.view.events import hover_entered, pointer_dx, pointer_position
@@ -44,7 +49,7 @@ from csearch.view.theme import (
     FS,
     FW,
     HEADER,
-    HINT,
+    ICON,
     ON_SELECTED,
     SELECTED_BG,
     SP,
@@ -147,7 +152,7 @@ def _build_row(ctx: AppContext, item: ResultItem, index: int) -> ui.Control:
             return ui.Row(
                 spacing=SP["2"],
                 controls=[
-                    ui.Icon(icon_name, size=16, color=icon_color),
+                    ui.Icon(icon_name, size=ICON["md"], color=icon_color),
                     ui.Text(
                         item.name,
                         size=FS["body"],
@@ -293,7 +298,7 @@ def _table_header(ctx: AppContext) -> ui.Control:
         state.col_widths.get(c, DEFAULT_COL_WIDTHS.get(c, 100)) for c, _, _ in COLUMNS
     )
     return ui.Container(
-        height=34,
+        height=HEADER_HEIGHT,
         bgcolor=HEADER,
         border=ui.Border(bottom=ui.BorderSide(1, BORDER)),
         content=ui.Row(spacing=0, width=total + 40, controls=cells),
@@ -302,6 +307,11 @@ def _table_header(ctx: AppContext) -> ui.Control:
 
 # --------------------------------------------------------------------- 空态
 def _engine_down_card(ctx: AppContext) -> ui.Control:
+    """引擎故障页：图标 + 说明 + 一键启动，整块居中。
+
+    这一块没有走 ``empty_block``：它需要一个**主操作按钮**，而且图标要带危险色
+    （故障不是"这里暂时空着"，是"坏了一件事"）。其余留白与空态保持同一套间距。
+    """
     return ui.Container(
         expand=True,
         bgcolor=SURFACE,
@@ -311,7 +321,11 @@ def _engine_down_card(ctx: AppContext) -> ui.Control:
             horizontal_alignment=ui.CrossAxisAlignment.CENTER,
             spacing=SP["3"],
             controls=[
-                ui.Icon(ui.Icons.DESKTOP_ACCESS_DISABLED_OUTLINED, size=44, color=danger()),
+                ui.Icon(
+                    ui.Icons.DESKTOP_ACCESS_DISABLED_OUTLINED,
+                    size=ICON["3xl"],
+                    color=danger(),
+                ),
                 ui.Text(
                     "Everything 服务未运行",
                     size=FS["title"],
@@ -334,23 +348,12 @@ def _engine_down_card(ctx: AppContext) -> ui.Control:
 
 
 def _empty_hint() -> ui.Control:
-    return ui.Container(
-        expand=True,
-        alignment=ui.Alignment(0, 0),
-        content=ui.Column(
-            alignment=ui.MainAxisAlignment.CENTER,
-            horizontal_alignment=ui.CrossAxisAlignment.CENTER,
-            spacing=SP["2"],
-            controls=[
-                ui.Icon(ui.Icons.SEARCH_OFF, size=40, color=HINT),
-                ui.Text("没有匹配的文件", size=FS["subtitle"], color=TEXT_SUB),
-                ui.Text(
-                    "换个更短的关键词，或放宽筛选条件",
-                    size=FS["small"],
-                    color=HINT,
-                ),
-            ],
-        ),
+    """搜到 0 条：走 cs-ui 的整块空态，图标底座 + 主文 + 下一步提示。"""
+    return ui.empty_block(
+        "没有匹配的文件",
+        hint="换个更短的关键词，或放宽筛选条件",
+        icon=ui.Icons.SEARCH_OFF,
+        height=None,  # 由 Stack 撑开，居中
     )
 
 

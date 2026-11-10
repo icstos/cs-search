@@ -31,6 +31,7 @@ from csearch.view.theme import (
     FS,
     HINT,
     HOVER,
+    RAD,
     SP,
     SURFACE,
     TEXT,
@@ -42,6 +43,19 @@ from csearch.view.theme import (
 from csearch.viewmodel.context import AppContext
 
 _ITEM_WIDTH = MENU_WIDTH - MENU_PANEL_PADDING * 2
+
+#: 不带组合符、但确实是「按键」的提示。其余不带 ``+`` 的提示（如"双击路径"）
+#: 是操作说明而不是按键，给它们套键帽反而会让人去找那个键，保持普通小字。
+_BARE_KEYS = frozenset({"Enter", "Delete", "Esc", "Tab", "F5"})
+
+
+def _hint(hint: str) -> ui.Control | None:
+    """菜单行尾的提示：按键给键帽，说明给一行小字。"""
+    if not hint:
+        return None
+    if "+" in hint or hint in _BARE_KEYS:
+        return ui.Kbd(hint)
+    return ui.Text(hint, size=FS["caption"], color=HINT, no_wrap=True)
 
 
 @ui.component
@@ -57,14 +71,12 @@ def _MenuItem(
     风险提示，且不会让菜单项的高度/对齐发生变化。
     """
     hover, set_hover = ui.use_state(False)
-    trailing: list[ui.Control] = (
-        [ui.Text(hint, size=FS["caption"], color=HINT, no_wrap=True)] if hint else []
-    )
+    trailing = _hint(hint)
     return ui.Container(
         width=_ITEM_WIDTH,
         height=MENU_ITEM_HEIGHT,
         padding=sym_padding(SP["3"], 0),
-        border_radius=radius_all(6),
+        border_radius=radius_all(RAD["md"]),
         bgcolor=HOVER if hover else ui.Colors.TRANSPARENT,
         on_click=lambda e: on_select(),
         on_hover=lambda e: set_hover(e.data == "true"),
@@ -79,7 +91,7 @@ def _MenuItem(
                     no_wrap=True,
                     overflow=ui.TextOverflow.ELLIPSIS,
                 ),
-                *trailing,
+                *([trailing] if trailing else []),
             ],
         ),
     )
@@ -182,7 +194,7 @@ def _panel(ctx: AppContext, items: list[ui.Control]) -> ui.Control:
         width=MENU_WIDTH,
         bgcolor=SURFACE,
         border=ui.Border.all(1, BORDER),
-        border_radius=radius_all(8),
+        border_radius=radius_all(RAD["lg"]),
         shadow=floating_shadow(2),
         padding=ui.Padding(
             MENU_PANEL_PADDING, MENU_PANEL_PADDING, MENU_PANEL_PADDING, MENU_PANEL_PADDING

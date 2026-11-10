@@ -1,7 +1,7 @@
 # CSearch — Everything 1.5 极速文件搜索
 
 在 Windows 10/11 上复刻 Everything 的本地文件搜索体验：毫秒级回显、Everything 原生搜索语法、
-实时索引同步、系统托盘常驻、全局热键唤起。**完全基于 Everything 1.5 + Python 3.12 + cs-ui（自有 UI 组件库，底层 Flet 1.0.5）。**
+实时索引同步、系统托盘常驻、全局热键唤起。**完全基于 Everything 1.5 + Python 3.12 + cs-ui 0.2（自有 UI 组件库，底层 Flet 1.1.2）。**
 
 ## 快速开始
 
@@ -44,7 +44,7 @@ C:\Softwares\Python-V3.12.10.x64\python.exe main.py               # 或 python m
 
 主题由 `cs-ui` 的主题运行时驱动（`ui.theme_state()` + `ui.apply_theme(page, state)`），
 强调色为蓝（`ui.PRIMARY_SEEDS["blue"]`）；对话框/菜单用 `ui.AlertDialog` 与
-M3 浮层阴影，通知用定宽浮动的 `ui.Toast`（不遮挡状态栏）。
+M3 浮层阴影，通知用 cs-ui 的 `ui.Message`（顶部居中浮动，不遮挡状态栏；系统级通报才用 `ui.Notification`）。
 
 ## 功能
 

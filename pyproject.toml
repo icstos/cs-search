@@ -5,7 +5,7 @@ description = "CSearch - Everything 1.5 极速文件搜索（ui 声明式，Wind
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "cs-ui==0.1.1",
+    "cs-ui==0.2.0",
     "everytools>=0.2.2",
     "requests>=2.31",
     "pynput>=1.7",

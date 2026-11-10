@@ -18,6 +18,8 @@ from csearch.view.theme import (
     FW,
     HINT,
     HOVER,
+    ICON,
+    RAD,
     SP,
     SURFACE,
     TEXT,
@@ -57,7 +59,7 @@ def _bookmark_card(ctx: AppContext, bookmark: Bookmark):
         on_secondary_tap_down=_open_menu,
         content=ui.Container(
             border=ui.Border.all(1, BORDER if not hovered else ACCENT),
-            border_radius=radius_all(10),
+            border_radius=radius_all(RAD["lg"]),
             bgcolor=HOVER if hovered else SURFACE,
             padding=ui.Padding(SP["3"], SP["2"], SP["2"], SP["2"]),
             on_hover=lambda e: set_hovered(e.data == "true"),
@@ -69,7 +71,7 @@ def _bookmark_card(ctx: AppContext, bookmark: Bookmark):
                         spacing=SP["2"],
                         vertical_alignment=ui.CrossAxisAlignment.CENTER,
                         controls=[
-                            ui.Icon(ui.Icons.BOOKMARK, size=15, color=ACCENT),
+                            ui.Icon(ui.Icons.BOOKMARK, size=ICON["md"], color=ACCENT),
                             ui.Text(
                                 bookmark.name,
                                 size=FS["body"],
@@ -86,10 +88,10 @@ def _bookmark_card(ctx: AppContext, bookmark: Bookmark):
                                 on_tap=_open_menu,
                                 content=ui.Container(
                                     padding=sym_padding(SP["1"], SP["1"]),
-                                    border_radius=radius_all(4),
+                                    border_radius=radius_all(RAD["sm"]),
                                     tooltip="重命名 / 删除",
                                     content=ui.Icon(
-                                        ui.Icons.MORE_HORIZ, size=16, color=TEXT_SUB
+                                        ui.Icons.MORE_HORIZ, size=ICON["md"], color=TEXT_SUB
                                     ),
                                 ),
                             ),
@@ -112,23 +114,16 @@ def _bookmark_card(ctx: AppContext, bookmark: Bookmark):
 def BookmarksPanel(ctx: AppContext):
     bookmarks = ctx.state.bookmarks
     if not bookmarks:
+        # 空态交给 cs-ui 的 empty_block：图标底座 / 主文 / 下一步提示三段结构与
+        # 框架其它地方完全一致，不再每个面板各画一套间距。
         return ui.Container(
             expand=True,
             bgcolor=SURFACE,
             alignment=ui.Alignment(0, 0),
-            content=ui.Column(
-                alignment=ui.MainAxisAlignment.CENTER,
-                horizontal_alignment=ui.CrossAxisAlignment.CENTER,
-                spacing=SP["2"],
-                controls=[
-                    ui.Icon(ui.Icons.BOOKMARK_BORDER, size=40, color=HINT),
-                    ui.Text("暂无书签", size=FS["subtitle"], color=TEXT_SUB),
-                    ui.Text(
-                        "设置好搜索条件后，点顶部书签图标即可保存",
-                        size=FS["small"],
-                        color=HINT,
-                    ),
-                ],
+            content=ui.empty_block(
+                "暂无书签",
+                hint="设置好搜索条件后，点顶部书签图标即可保存",
+                icon=ui.Icons.BOOKMARK_BORDER,
             ),
         )
 

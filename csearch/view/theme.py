@@ -1,15 +1,18 @@
-"""设计令牌：把 CSearch 的界面词汇落到 cs-ui 的设计系统（Material 3）上。
+"""设计令牌：把 CSearch 的界面词汇落到 cs-ui 的 Material 3 设计系统上。
 
 三条硬规则（改前先读，否则很容易写出「浅色好看、深色瞎眼」的代码）：
 
 1. **结构色只引用 M3 角色**（``ui.Colors.*``），由 Flutter 在运行时按当前
    ``ColorScheme`` 解析。因此这里不维护两套明暗色值 —— 切主题是零成本的，
    也不可能出现硬编码灰在深色底上看不清的问题。
-2. **``success`` / ``warning`` / ``danger`` 是 M3 没有的角色**，走
-   ``ui.semantic_text()``（按当前生效模式取值）。所以它们是**函数**而不是常量：
-   常量会在切主题后停在旧模式的色值上。
-3. **尺寸不写裸数字**：间距走 4px 网格（``SP``），圆角 / 字号走 cs-ui 的档位表
-   （``RAD`` / ``FS``）。要整体调密度或风格，只改这一个文件。
+2. **``success`` / ``warning`` / ``danger`` 是 M3 没有的角色**，取值由 cs-ui 按
+   当前生效模式算出来。所以它们是**函数**而不是常量：常量会在切主题后停在
+   旧模式的色值上。
+3. **尺寸不写裸数字**：间距 / 圆角 / 字号 / 图标 / 控件高 / 动效时长一律走 cs-ui
+   的档位表。要整体调密度或风格，只改这一个文件。
+
+本文件是视图层**唯一**的颜色与尺寸出口：视图里出现 ``"#1F6FEB"``、``18``、
+``0.06`` 这类字面量就是走错了地方。
 """
 
 from __future__ import annotations
@@ -18,18 +21,24 @@ import ui
 from ui.core.tokens import (
     FONT_SIZE,
     FONT_WEIGHT,
+    ICON_SIZE,
     RADIUS,
     SPACE,
+    accent_soft,
+    accent_text,
     elevation,
+    focus_border,
     overlay,
-    semantic_text,
+    selected_layer,
+    state_layer,
 )
 
 # --------------------------------------------------------------------- 尺寸档位
 SP = SPACE  # 4px 基准网格：SP["2"] = 8
 RAD = RADIUS  # xs 2 / sm 4 / md 6 / lg 8 / xl 12 / full 999
-FS = FONT_SIZE  # caption 11 / small 12 / body 13 / subtitle 14 / title 16
+FS = FONT_SIZE  # caption 11 / small 12 / body 14 / title 16 / headline 20
 FW = FONT_WEIGHT
+ICON = ICON_SIZE  # 与「和谁同行」绑定：md 16 配正文 / lg 18 配标题 / 2xl 24 空态
 
 # --------------------------------------------------------------------- 表面层级
 # 从下到上：页面底 → 工具栏/状态栏 → 内容面 → 表头。深色模式下 Flutter 会把这些
@@ -44,18 +53,19 @@ BORDER = ui.Colors.OUTLINE_VARIANT
 TEXT = ui.Colors.ON_SURFACE
 TEXT_SUB = ui.Colors.ON_SURFACE_VARIANT
 HINT = overlay(0.6)  # 占位 / 空态说明
-FAINT = overlay(0.38)  # 更弱：无数据单元格
+FAINT = overlay(0.38)  # 更弱：无数据单元格（= M3 的禁用标签透明度）
 
 # --------------------------------------------------------------------- 交互态
-ACCENT = ui.Colors.PRIMARY
-ACCENT_BG = ui.Colors.PRIMARY_CONTAINER
-ON_ACCENT_BG = ui.Colors.ON_PRIMARY_CONTAINER
-SELECTED_BG = ui.Colors.PRIMARY_CONTAINER
+# 强调色走 cs-ui 的四联函数而不是裸 ``PRIMARY``：同一个"主色"在实底、实底上的
+# 文字、压在表面上的文字、淡底这四种场合取值不同，函数是唯一入口。
+ACCENT = accent_text("primary")  # 主色文字 / 图标 / 细边框
+ACCENT_BG = accent_soft("primary")  # 12% 淡底（小面积：图标底座、选中胶囊）
+SELECTED_BG = selected_layer("strong")  # 选中行：主色容器实底
 ON_SELECTED = ui.Colors.ON_PRIMARY_CONTAINER
 # 选中行里的次要文本：不能直接用 TEXT_SUB（那是灰的，压在蓝底上会脏）
 SUB_ON_SELECTED = overlay(0.72, role=ui.Colors.ON_PRIMARY_CONTAINER)
-HOVER = overlay(0.06)  # 悬停底色（菜单项 / 卡片）
-TRACK = overlay(0.14)  # 列拖拽条等中性线条
+HOVER = state_layer("hover")  # 悬停底色（菜单项 / 卡片），0.08 与 flet 内置控件同值
+TRACK = state_layer("dragged")  # 列分隔条等中性线条：拖动档 0.16
 
 # --------------------------------------------------------------------- 列对齐
 ALIGNMENT = {
@@ -69,21 +79,20 @@ TEXT_ALIGN = {
     1: ui.TextAlign.RIGHT,
 }
 
-
 # --------------------------------------------------------------------- 语义色
 def success() -> str:
     """成功 / 有数据的强调色（按当前主题模式取值）。"""
-    return semantic_text("success")
+    return accent_text("success")
 
 
 def warning() -> str:
     """进行中 / 需留意的状态色。"""
-    return semantic_text("warning")
+    return accent_text("warning")
 
 
 def danger() -> str:
     """错误 / 破坏性操作色。"""
-    return semantic_text("danger")
+    return accent_text("danger")
 
 
 # --------------------------------------------------------------------- 形状与间距
@@ -115,15 +124,17 @@ def floating_shadow(level: int = 2) -> ui.BoxShadow:
 
 
 def field_border(radius: float, *, focus_width: float = 1.5) -> dict:
-    """描边式输入框的边框表：常态细灰线，聚焦时主色加粗。"""
-    shape = ui.OutlineInputBorder(
-        side=hairline(), border_radius=radius_all(radius)
-    )
+    """描边式输入框的边框表：常态细灰线，聚焦时主色加粗。
+
+    用 ``border={ControlState.X: OutlineInputBorder(...)}`` 这套三态写法，
+    而不是已弃用的 ``focused_border_color`` / ``focused_border_width``。
+    """
     return {
-        ui.ControlState.DEFAULT: shape,
+        ui.ControlState.DEFAULT: ui.OutlineInputBorder(
+            side=hairline(), border_radius=radius_all(radius)
+        ),
         ui.ControlState.FOCUSED: ui.OutlineInputBorder(
-            side=ui.BorderSide(focus_width, ACCENT),
-            border_radius=radius_all(radius),
+            side=focus_border(focus_width), border_radius=radius_all(radius)
         ),
         ui.ControlState.DISABLED: ui.OutlineInputBorder(
             side=hairline(), border_radius=radius_all(radius)
@@ -140,10 +151,46 @@ def outline_field(**overrides: object) -> ui.TextField:
     props: dict[str, object] = {
         "dense": True,
         "text_size": FS["body"],
-        # flet 1.0 的新写法：按控件状态给边框（旧的 focused_border_color /
-        # focused_border_width 已标记弃用，1.3 会移除）。
         "border": field_border(RAD["md"]),
         "content_padding": ui.Padding.symmetric(horizontal=SP["3"], vertical=SP["2"]),
     }
     props.update(overrides)
     return ui.TextField(**props)  # type: ignore[arg-type]
+
+
+__all__ = [
+    "ACCENT",
+    "ACCENT_BG",
+    "ALIGNMENT",
+    "BORDER",
+    "FAINT",
+    "FS",
+    "FW",
+    "HEADER",
+    "HINT",
+    "HOVER",
+    "ICON",
+    "ON_SELECTED",
+    "PAGE",
+    "PANEL",
+    "RAD",
+    "SELECTED_BG",
+    "SP",
+    "SUB_ON_SELECTED",
+    "SURFACE",
+    "TEXT",
+    "TEXT_ALIGN",
+    "TEXT_SUB",
+    "TRACK",
+    "bottom_border",
+    "danger",
+    "field_border",
+    "floating_shadow",
+    "hairline",
+    "outline_field",
+    "radius_all",
+    "success",
+    "sym_padding",
+    "top_border",
+    "warning",
+]

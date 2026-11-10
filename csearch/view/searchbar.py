@@ -21,6 +21,7 @@ from csearch.view.theme import (
     BORDER,
     FS,
     FW,
+    ICON,
     PANEL,
     RAD,
     SP,
@@ -66,7 +67,7 @@ def _regex_toggle(ctx: AppContext) -> ui.Control:
 
 def _divider() -> ui.Control:
     """工具栏内的分组竖线（比整条 VerticalDivider 轻，不参与布局分配）。"""
-    return ui.Container(width=1, height=18, bgcolor=TRACK, margin=sym_padding(2, 0))
+    return ui.Container(width=1, height=ICON["lg"], bgcolor=TRACK, margin=sym_padding(2, 0))
 
 
 def _dropdown(
@@ -98,7 +99,7 @@ def _dropdown(
 def _icon_action(icon: str, tooltip: str, on_click) -> ui.Control:
     return ui.IconButton(
         icon=icon,
-        icon_size=18,
+        icon_size=ICON["lg"],
         icon_color=TEXT_SUB,
         tooltip=tooltip,
         on_click=on_click,
@@ -140,10 +141,10 @@ def _search_field(ctx: AppContext, text: str) -> ui.TextField:
         ),
         expand=True,
         dense=True,
-        text_size=FS["subtitle"],
+        text_size=FS["body"],
         filled=True,
         fill_color=SURFACE,
-        prefix_icon=ui.Icon(ui.Icons.SEARCH, size=18, color=TEXT_SUB),
+        prefix_icon=ui.Icon(ui.Icons.SEARCH, size=ICON["lg"], color=TEXT_SUB),
         border=field_border(RAD["lg"]),
         content_padding=ui.Padding(0, SP["2"], SP["3"], SP["2"]),
         ignore_up_down_keys=True,
