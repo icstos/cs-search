@@ -1,7 +1,7 @@
 """系统托盘（pystray）+ 全局热键（pynput）实现。
 
 设计要点：
-- 完全解耦：不 import 任何业务逻辑模块，只依赖 ``models`` 里的零依赖常量与热键校验；
+- 完全解耦：不 import 任何业务逻辑模块，只依赖 ``models`` 常量与零依赖路径工具；
   通过构造参数注入的回调与上层通信；
 - 线程安全：托盘消息循环与热键监听均运行在守护子线程，互不阻塞主线程；
   所有 GUI 操作由调用方经事件桥抛回主线程执行，禁止在回调中直接操作 Flet 控件；
@@ -17,11 +17,12 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from csearch._paths import assets_dir
 from csearch.models.constants import DEFAULT_HOTKEY, is_valid_hotkey
 
 # pystray / pynput / Pillow 为可选依赖。三者合计约 0.8s 导入，而托盘与热键都是
 # 「窗口起来之后才有意义」的能力，因此推迟到 start()/set_hotkey() 真正用到时再导入，
-# 让应用启动关键路径上只剩 flet（见 csearch/preload.py）。
+# 让应用启动关键路径上只剩 flet（见 src/csearch/preload.py）。
 pystray: Any = None
 Menu: Any = None
 MenuItem: Any = None
@@ -115,11 +116,8 @@ def _combo_held(combo: str) -> bool:
 
 
 def _default_icon_path() -> str | None:
-    """定位项目 assets 目录下的托盘图标（相对本模块：csearch/infra/../../assets）。"""
-    root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
-    assets = os.path.join(root, "assets")
+    """定位项目 assets 目录下的托盘图标（路径解析见 csearch._paths）。"""
+    assets = assets_dir()
     for name in _ICON_CANDIDATES:
         path = os.path.join(assets, name)
         if os.path.isfile(path):

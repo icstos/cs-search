@@ -25,12 +25,12 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from typing import Any
 
 import ui
 
 from csearch import preload
+from csearch._paths import assets_dir
 from csearch.models.constants import (
     APP_TITLE,
     FONT_ASSET,
@@ -40,10 +40,8 @@ from csearch.models.constants import (
     MIN_WINDOW_WIDTH,
 )
 
-# assets 目录（包的上一级）
-_ASSETS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets"
-)
+# assets 目录不硬编码层级：src 布局与打包摊平结构通用（见 csearch._paths）
+_ASSETS_DIR = str(assets_dir())
 
 # 模块导入即开始预热：此刻 ui.run 尚未调用，客户端也尚未被拉起，两者正好并行
 preload.start()

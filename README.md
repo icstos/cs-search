@@ -6,10 +6,14 @@
 ## 快速开始
 
 ```powershell
-cd D:\projects\cs-search
-C:\Softwares\Python-V3.12.10.x64\python.exe -m pip install -e .   # 或 pip install -e .
-C:\Softwares\Python-V3.12.10.x64\python.exe main.py               # 或 python main.py
+cd D:\cstos\projects\cs-search
+python -m pip install -e .   # 开发模式安装（首次 / 依赖变更后执行一次）
+csearch                      # 控制台入口；等价于 python main.py
 ```
+
+`pip install -e .` 以 src 布局注册 `[project.scripts] csearch` 入口；装完后从任意目录
+都能 `import csearch`，源码改动即时生效，无需重复安装。未安装的机器仍可直接
+`python main.py`（入口内置 src 路径引导）。
 
 前置条件：已安装并运行 [Everything 1.5+](https://www.voidtools.com/zh-cn/downloads/)。
 启动时自动检测 Everything 服务，未运行时界面给出友好提示与一键启动引导。
@@ -34,7 +38,7 @@ C:\Softwares\Python-V3.12.10.x64\python.exe main.py               # 或 python m
 
 ### 视觉体系（cs-ui 设计系统）
 
-界面不写裸色值，全部走 `csearch/view/theme.py` 的三层令牌：
+界面不写裸色值，全部走 `src/csearch/view/theme.py` 的三层令牌：
 
 1. **结构色**引自 M3 角色（`SURFACE_CONTAINER_LOWEST` / `SURFACE_CONTAINER_LOW` /
    `OUTLINE_VARIANT` / `ON_SURFACE` …），明暗切换零成本；
@@ -75,58 +79,65 @@ View ──▶ ViewModel ──▶ Service ──▶ Infra
 ```
 
 ```
-main.py                  极简入口（委托 bootstrap.run）
+main.py                  极简入口（src 路径引导 + 委托 bootstrap.run）
 app.py                   独立介绍站点（ui 组件库，flet run app.py）
-csearch/
-├── bootstrap.py         组合根：装配 infra → service → viewmodel，接页面与全局事件
-├── preload.py           启动预热（重依赖导入与客户端拉起并行）
-├── models/              模型层：数据结构 / 枚举 / 常量 / 抽象接口，无业务逻辑
-│   ├── constants.py     常量与界面调参（单一事实来源）
-│   ├── enums.py         Focus / DialogKind / MenuKind / WindowEventKind / BridgeEventType
-│   ├── entities.py      ResultItem / SearchOutcome / Bookmark / EngineStatus / 配置 / 事件
-│   ├── errors.py        领域错误（EngineUnavailable / SearchTimeout）
-│   └── ports.py         全部抽象接口（Protocol）：九大基础设施端口 + 视图/工厂端口
-├── infra/               基础设施层：底层技术实现，不含业务逻辑
-│   ├── everything_engine.py  Everything 1.5 SDK（分页查询 / 排序 / 内容搜索看门狗）
-│   ├── file_ops.py           系统文件操作（打开 / 定位 / 复制 / 回收站 / 启动引擎）
-│   ├── json_store.py         配置与书签 JSON（容错读取 + 原子写入）
-│   ├── run_history.py        运行历史（SQLModel / SQLite，惰性导入）
-│   ├── win32.py              Win32 能力（修饰键 / 光标 / 多屏几何 / 窗口置前）
-│   ├── wheel.py              WH_MOUSE_LL 滚轮桥（部分客户端滚轮失效兜底）
-│   ├── tray.py               托盘（pystray）+ 全局热键（pynput），守护线程
-│   ├── event_bus.py          跨线程事件桥（后台线程 → asyncio 主循环）
-│   ├── ui_window.py          ui Page.window → Window 端口适配
-│   ├── ui_events.py          ui 事件 → KeyStroke / WindowEventData 归一化
-│   ├── notifier.py           ui SnackBar → Notifier 端口适配
-│   └── background_factory.py 托盘 / 滚轮桥工厂（service 不感知具体类型）
-├── service/             服务层：编排核心业务流程，只依赖抽象接口
-│   ├── search.py        查询构建 → 分页检索 → 运行次数回填（一次线程往返）
-│   ├── files.py         文件动作（全部入线程池）
-│   ├── history.py       运行历史（同步仓储 → 异步 API）
-│   ├── bookmarks.py     书签业务规则（默认命名 / ID 生成 / 增删改）
-│   ├── config.py        配置业务规则（非法热键回退默认）
-│   └── session.py       启动装配（后台服务 / 引擎探测 / 托盘 / 热键）与退出
-├── viewmodel/           视图模型层：持有 UI 状态、中转业务调用与状态回调
-│   ├── state.py         AppState（@ui.observable 单一状态源）
-│   ├── container.py     Services（viewmodel 可见的全部能力，只含端口与 service）
-│   ├── context.py       AppContext（state + 全部 VM，view 的唯一入口）
-│   ├── search.py        防抖 / 分页 / 增量加载 / 静默刷新 / 排序过滤正则 / 滚动
-│   ├── selection.py     选中 / 双击分发 / 键盘移动 / 焦点域
-│   ├── actions.py       文件动作、运行次数、引擎引导
-│   ├── bookmarks.py     书签保存 / 应用 / 重命名 / 删除
-│   ├── columns.py       列宽拖拽（双通道）与缩放自适应
-│   ├── settings.py      全局热键 / 自定义大小
-│   ├── menu.py          右键菜单状态与坐标夹紧
-│   ├── window.py        托盘显隐 / 唤回抢焦 / 几何记忆 / 窗口事件 / 退出
-│   ├── keyboard.py      页面级快捷键路由
-│   └── session.py       初始化编排 + 事件桥消费循环
-└── view/                视图层：纯 ui 组件，UI = f(状态)，无业务逻辑
-    ├── theme.py         设计令牌（颜色/间距/边框/对齐，单一来源）
-    ├── icons.py         文件类型 → 图标/颜色
-    ├── events.py        事件坐标读取（交给 VM 的纯数据）
-    ├── scroller.py      ListView → ScrollTarget 端口适配
-    └── app / searchbar / results / bookmarks / statusbar / dialogs / menu / sidebar
+src/                     src 布局：源码包根目录，安装与打包的单一来源
+└── csearch/
+    ├── bootstrap.py     组合根：装配 infra → service → viewmodel，接页面与全局事件
+    ├── preload.py       启动预热（重依赖导入与客户端拉起并行）
+    ├── _paths.py        项目 assets 目录定位（src / 打包摊平结构通用）
+    ├── models/          模型层：数据结构 / 枚举 / 常量 / 抽象接口，无业务逻辑
+    │   ├── constants.py 常量与界面调参（单一事实来源）
+    │   ├── enums.py     Focus / DialogKind / MenuKind / WindowEventKind / BridgeEventType
+    │   ├── entities.py  ResultItem / SearchOutcome / Bookmark / EngineStatus / 配置 / 事件
+    │   ├── errors.py    领域错误（EngineUnavailable / SearchTimeout）
+    │   └── ports.py     全部抽象接口（Protocol）：九大基础设施端口 + 视图/工厂端口
+    ├── infra/           基础设施层：底层技术实现，不含业务逻辑
+    │   ├── everything_engine.py  Everything 1.5 SDK（分页查询 / 排序 / 内容搜索看门狗）
+    │   ├── file_ops.py           系统文件操作（打开 / 定位 / 复制 / 回收站 / 启动引擎）
+    │   ├── json_store.py         配置与书签 JSON（容错读取 + 原子写入）
+    │   ├── run_history.py        运行历史（SQLModel / SQLite，惰性导入）
+    │   ├── win32.py              Win32 能力（修饰键 / 光标 / 多屏几何 / 窗口置前）
+    │   ├── wheel.py              WH_MOUSE_LL 滚轮桥（部分客户端滚轮失效兜底）
+    │   ├── tray.py               托盘（pystray）+ 全局热键（pynput），守护线程
+    │   ├── event_bus.py          跨线程事件桥（后台线程 → asyncio 主循环）
+    │   ├── ui_window.py          ui Page.window → Window 端口适配
+    │   ├── ui_events.py          ui 事件 → KeyStroke / WindowEventData 归一化
+    │   ├── notifier.py           ui SnackBar → Notifier 端口适配
+    │   └── background_factory.py 托盘 / 滚轮桥工厂（service 不感知具体类型）
+    ├── service/         服务层：编排核心业务流程，只依赖抽象接口
+    │   ├── search.py    查询构建 → 分页检索 → 运行次数回填（一次线程往返）
+    │   ├── files.py     文件动作（全部入线程池）
+    │   ├── history.py   运行历史（同步仓储 → 异步 API）
+    │   ├── bookmarks.py 书签业务规则（默认命名 / ID 生成 / 增删改）
+    │   ├── config.py    配置业务规则（非法热键回退默认）
+    │   └── session.py   启动装配（后台服务 / 引擎探测 / 托盘 / 热键）与退出
+    ├── viewmodel/       视图模型层：持有 UI 状态、中转业务调用与状态回调
+    │   ├── state.py     AppState（@ui.observable 单一状态源）
+    │   ├── container.py Services（viewmodel 可见的全部能力，只含端口与 service）
+    │   ├── context.py   AppContext（state + 全部 VM，view 的唯一入口）
+    │   ├── search.py    防抖 / 分页 / 增量加载 / 静默刷新 / 排序过滤正则 / 滚动
+    │   ├── selection.py 选中 / 双击分发 / 键盘移动 / 焦点域
+    │   ├── actions.py   文件动作、运行次数、引擎引导
+    │   ├── bookmarks.py 书签保存 / 应用 / 重命名 / 删除
+    │   ├── columns.py   列宽拖拽（双通道）与缩放自适应
+    │   ├── settings.py  全局热键 / 自定义大小
+    │   ├── menu.py      右键菜单状态与坐标夹紧
+    │   ├── window.py    托盘显隐 / 唤回抢焦 / 几何记忆 / 窗口事件 / 退出
+    │   ├── keyboard.py  页面级快捷键路由
+    │   └── session.py   初始化编排 + 事件桥消费循环
+    └── view/            视图层：纯 ui 组件，UI = f(状态)，无业务逻辑
+        ├── theme.py     设计令牌（颜色/间距/边框/对齐，单一来源）
+        ├── icons.py     文件类型 → 图标/颜色
+        ├── events.py    事件坐标读取（交给 VM 的纯数据）
+        ├── scroller.py  ListView → ScrollTarget 端口适配
+        └── app / searchbar / results / bookmarks / statusbar / dialogs / menu / sidebar
 ```
+
+src 布局约定：包发现由 `pyproject.toml` 的 `[tool.setuptools.packages.find] where = ["src"]` 负责；
+`main.py` 内置极简 `sys.path` 引导，`python main.py` 无需先安装即可运行，也兼容
+`pip install -e .` 与打包流程。`assets/` 仍在项目根，经 `csearch._paths` 定位，
+与包所在层级解耦。
 
 分层落点：
 

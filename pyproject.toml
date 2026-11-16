@@ -5,7 +5,7 @@ description = "CSearch - Everything 1.5 极速文件搜索（ui 声明式，Wind
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "cs-ui==0.2.0",
+    "cs-ui>=0.2.0",
     "everytools>=0.2.2",
     "requests>=2.31",
     "pynput>=1.7",
@@ -16,16 +16,15 @@ dependencies = [
     "sqlmodel>=0.0.22",
 ]
 
+[project.scripts]
+csearch = "csearch.bootstrap:run"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = [
-    "csearch",
-    "csearch.models",
-    "csearch.infra",
-    "csearch.service",
-    "csearch.viewmodel",
-    "csearch.view",
-]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -39,7 +39,7 @@ class SearchEngine(Protocol):
     """Everything 查询内核（分页查询 / 排序）。
 
     不含「索引变更监听」：当前 SDK DLL 没有任何变更通知 API，同步改由
-    viewmodel 层轮询实现（见 csearch/viewmodel/search.py::sync_loop）。
+    viewmodel 层轮询实现（见 src/csearch/viewmodel/search.py::sync_loop）。
     """
 
     version: str

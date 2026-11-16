@@ -10,7 +10,7 @@
   （实测导出表 90 个符号，只有 SetReplyWindow / SetReplyID / RunCount 系列，
   没有 1.5 SDK 的 Everything_SetNotifyWindow），Everything 1.5 客户端自身的
   IPC 也没有变更订阅接口。因此「结果随外部文件变化实时更新」由 viewmodel 层
-  两级轮询实现（见 csearch/viewmodel/search.py 的 sync_loop），本文件只提供
+  两级轮询实现（见 src/csearch/viewmodel/search.py 的 sync_loop），本文件只提供
   尽量快的分页查询能力——探针开销几乎全在 Everything 侧的搜索+排序，与 max 弱相关。
 - 所有调用经 threading.Lock 串行化，由上层 asyncio.to_thread 放入线程池执行。
 """
@@ -121,7 +121,7 @@ class EverythingEngine:
         try:
             # 惰性导入：everytools 会连带拉起 requests/charset_normalizer（约 0.9s），
             # 放在函数内可以让 csearch.infra.everything_engine 的导入本身保持极轻，
-            # 便于预加载线程与桌面客户端启动并行（见 csearch/preload.py）。
+            # 便于预加载线程与桌面客户端启动并行（见 src/csearch/preload.py）。
             from everytools.core.dll_loader import get_dll_loader
 
             loader = get_dll_loader()
