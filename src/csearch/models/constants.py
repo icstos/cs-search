@@ -7,8 +7,7 @@ from __future__ import annotations
 
 # --------------------------------------------------------------------- 应用元信息
 APP_TITLE = "CSearch - 极速文件搜索"
-FONT_FAMILY = "AlibabaPuHuiTi"
-FONT_ASSET = "fonts/AlibabaPuHuiTi-3-55-Regular.otf"
+# 正文/等宽字体交由 cs-ui 按运行平台选择（见 ui.core.fonts），应用不再自带字体资源
 ICON_ASSET = "icon_windows.ico"
 
 # --------------------------------------------------------------------- 主题

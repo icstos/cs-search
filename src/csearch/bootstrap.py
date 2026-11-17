@@ -33,8 +33,6 @@ from csearch import preload
 from csearch._paths import assets_dir
 from csearch.models.constants import (
     APP_TITLE,
-    FONT_ASSET,
-    FONT_FAMILY,
     ICON_ASSET,
     MIN_WINDOW_HEIGHT,
     MIN_WINDOW_WIDTH,
@@ -120,17 +118,15 @@ def _apply_theme(page: ui.Page, mode: str) -> None:
     """
     state = ui.theme_state()
     state.primary = ui.PRIMARY_SEEDS["blue"]
-    state.font_family = FONT_FAMILY
     state.set_mode(mode)
     ui.apply_theme(page, state)
 
 
 def _configure_page(page: ui.Page, cfg: Any) -> None:
-    """全局样式与字体（无边框紧凑桌面风）。"""
+    """全局样式（无边框紧凑桌面风）；字体走 cs-ui 的平台默认配置。"""
     page.title = APP_TITLE
     page.padding = 0
     page.spacing = 0
-    page.fonts = {FONT_FAMILY: FONT_ASSET}
     page.bgcolor = ui.Colors.SURFACE_CONTAINER_LOWEST
     _apply_theme(page, cfg.theme)
 
